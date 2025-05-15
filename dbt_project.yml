@@ -37,12 +37,10 @@ clean-targets:         # directories to be removed by `dbt clean`
 
 models:
   MTSNEW:
-    # Applies to all files under models/example/
-    
     bronze:
-      +schema: broze_sales
       +materialized: table
     silver:
-      +schema: silver_sales
-      +materialized: table
+      +schema: SILVER_SALES
+      +materialized: incremental
+
     

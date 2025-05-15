@@ -23,7 +23,7 @@ WITH source_data AS (
         md5(
             coalesce(M0SLRP, '') || '|' ||
             coalesce(M0NAME, '') || '|' ||
-            coalesce(M0SPCM, '') || '|' ||, '')
+            coalesce(M0SPCM, '')
         ) AS row_hash,
         ENTRY_TIMESTAMP AS EFFECTIVE_START_DATE,
         NULL AS EFFECTIVE_END_DATE,
@@ -31,7 +31,6 @@ WITH source_data AS (
     FROM {{ source('raw_data', 'T_BRZ_SALESREP_MASTER_SASLRM') }}
 ),
 
--- Get new/changed records not already in target
 new_records AS (
     SELECT s.*
     FROM source_data s
@@ -42,4 +41,9 @@ new_records AS (
     WHERE t.M0SLRP IS NULL
 )
 
-SELECT * FROM new_records
+select * from
+{% if is_incremental() %}
+    new_records
+{% else %}
+    source_data
+{% endif %}
