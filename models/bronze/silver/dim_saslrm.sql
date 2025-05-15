@@ -28,7 +28,7 @@ WITH source_data AS (
         ENTRY_TIMESTAMP AS EFFECTIVE_START_DATE,
         NULL AS EFFECTIVE_END_DATE,
         TRUE AS CURRENT_FLAG
-    FROM {{ source('BRONZE_SALES', 'T_BRZ_SALESREP_MASTER_SASLRM') }}
+    FROM {{ source('raw_data', 'T_BRZ_SALESREP_MASTER_SASLRM') }}
 ),
 
 -- Get new/changed records not already in target
