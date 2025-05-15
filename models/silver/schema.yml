@@ -1,7 +1,7 @@
 version: 2
 
 sources:
-  - name: raw_data                # will become source('raw_data', ...)
+  - name: silver_data                # will become source('raw_data', ...)
     database: RAW_DATA            # your Snowflake database
     schema: SILVER_SALES          # your Snowflake schema
     tables:

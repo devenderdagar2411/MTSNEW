@@ -6,7 +6,7 @@
   )
 }}
 
--- This model implements SCD Type 2 for customer data - incremental only
+-- This model implements SCD Type 2 for customer data with both initial load and incremental updates
 
 WITH source_data AS (
     SELECT        
@@ -35,9 +35,12 @@ ranked_source AS (
         *,
         ROW_NUMBER() OVER (PARTITION BY M0SLRP ORDER BY ENTRY_TIMESTAMP) AS CHANGE_RANK
     FROM source_data
-),
+)
 
-current_dim AS (
+{% if is_incremental() %}
+
+-- Incremental logic when the table already exists
+, current_dim AS (
     SELECT 
         SURROGATE_KEY,
         M0SLRP,
@@ -109,3 +112,30 @@ new_records AS (
 SELECT * FROM records_to_expire
 UNION ALL
 SELECT * FROM new_records
+
+{% else %}
+
+-- Initial load logic when the table doesn't exist yet
+SELECT 
+    ROW_NUMBER() OVER (ORDER BY M0SLRP) AS SURROGATE_KEY,
+    M0SLRP,
+    M0NAME,
+    M0SPCM,
+    SOURCE_SYSTEM,
+    SOURCE_FILE_NAME,
+    BATCH_ID,
+    RECORD_CHECKSUM,
+    ETL_VERSION,
+    INGESTION_Date,
+    INGESTION_TIMESTAMP,
+    TRACKING_HASH,
+    CURRENT_TIMESTAMP() AS DBT_UPDATED_AT,
+    'DBT' AS DBT_UPDATED_BY,
+    ENTRY_TIMESTAMP AS VALID_FROM,
+    NULL AS VALID_TO,
+    TRUE AS IS_CURRENT
+FROM ranked_source
+-- Take only the latest record for each M0SLRP in the initial load
+QUALIFY ROW_NUMBER() OVER (PARTITION BY M0SLRP ORDER BY ENTRY_TIMESTAMP DESC) = 1
+
+{% endif %}
