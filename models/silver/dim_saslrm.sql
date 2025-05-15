@@ -1,11 +1,3 @@
-{{ config(
-    materialized='incremental',
-    unique_key='M0SLRP',
-    incremental_strategy='merge',
-    on_schema_change='sync_all_columns'
-) }}
-
-WITH source_data AS (
     SELECT
         ENTRY_TIMESTAMP,
         SEQUENCE_NUMBER,
@@ -29,21 +21,3 @@ WITH source_data AS (
         NULL AS EFFECTIVE_END_DATE,
         TRUE AS CURRENT_FLAG
     FROM {{ source('raw_data', 'T_BRZ_SALESREP_MASTER_SASLRM') }}
-),
-
-new_records AS (
-    SELECT s.*
-    FROM source_data s
-    LEFT JOIN {{ this }} t
-      ON s.M0SLRP = t.M0SLRP
-     AND s.row_hash = t.row_hash
-     AND t.CURRENT_FLAG = TRUE
-    WHERE t.M0SLRP IS NULL
-)
-
-select * from
-{% if is_incremental() %}
-    new_records
-{% else %}
-    source_data
-{% endif %}
