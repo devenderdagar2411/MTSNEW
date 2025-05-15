@@ -6,6 +6,8 @@
   )
 }}
 
+-- This model implements SCD Type 2 for customer data - incremental only
+
 WITH source_data AS (
     SELECT        
         M0SLRP,
@@ -14,11 +16,12 @@ WITH source_data AS (
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
-        RECORD_CHECKSUM as RECORD_CHECKSUM_HASH,
+        RECORD_CHECKSUM as RECORD_CHECKSUM,
         ETL_VERSION,
         INGESTION_Date,
         INGESTION_TIMESTAMP,
         ENTRY_TIMESTAMP,
+        -- Create hash to track changes specifically in M0NAME and M0SPCM
         MD5(CONCAT_WS('|',
             COALESCE(M0SLRP::VARCHAR, ''),
             COALESCE(M0NAME::VARCHAR, ''),
@@ -58,18 +61,16 @@ records_to_expire AS (
         NULL AS SOURCE_SYSTEM,
         NULL AS SOURCE_FILE_NAME,
         NULL AS BATCH_ID,
-        NULL AS RECORD_CHECKSUM_HASH,
+        NULL AS RECORD_CHECKSUM,
         NULL AS ETL_VERSION,
-        NULL AS INGESTION_DATE,
+        NULL AS INGESTION_Date,
         NULL AS INGESTION_TIMESTAMP,
         cd.TRACKING_HASH,
         cd.VALID_FROM,
         rs.ENTRY_TIMESTAMP AS VALID_TO,
         FALSE AS IS_CURRENT,
-        CURRENT_TIMESTAMP AS DBT_UPDATED_AT,
-        'DBT' AS DBT_UPDATED_BY,
-        NULL AS CHANGE_RANK,
-        cd.SURROGATE_KEY AS SURROGATE_KEY
+        CURRENT_TIMESTAMP() AS DBT_UPDATED_AT,
+        'DBT' AS DBT_UPDATED_BY
     FROM current_dim cd
     JOIN ranked_source rs
       ON cd.M0SLRP = rs.M0SLRP
@@ -87,17 +88,16 @@ new_records AS (
         rs.SOURCE_SYSTEM,
         rs.SOURCE_FILE_NAME,
         rs.BATCH_ID,
-        rs.RECORD_CHECKSUM_HASH,
+        rs.RECORD_CHECKSUM,
         rs.ETL_VERSION,
-        rs.INGESTION_DATE,
+        rs.INGESTION_Date,
         rs.INGESTION_TIMESTAMP,
         rs.TRACKING_HASH,
         rs.ENTRY_TIMESTAMP AS VALID_FROM,
         NULL AS VALID_TO,
         TRUE AS IS_CURRENT,
-        CURRENT_TIMESTAMP AS DBT_UPDATED_AT,
-        'DBT' AS DBT_UPDATED_BY,
-        rs.CHANGE_RANK
+        CURRENT_TIMESTAMP() AS DBT_UPDATED_AT,
+        'DBT' AS DBT_UPDATED_BY
     FROM ranked_source rs
     LEFT JOIN current_dim cd
       ON rs.M0SLRP = cd.M0SLRP AND cd.IS_CURRENT = TRUE
