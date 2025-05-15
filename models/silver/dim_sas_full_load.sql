@@ -6,8 +6,6 @@
   )
 }}
 
--- This model implements SCD Type 2 for customer data with both initial load and incremental updates
-
 WITH source_data AS (
     SELECT        
         M0SLRP,
@@ -16,12 +14,11 @@ WITH source_data AS (
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
-        RECORD_CHECKSUM as RECORD_CHECKSUM,
+        RECORD_CHECKSUM,
         ETL_VERSION,
         INGESTION_Date,
         INGESTION_TIMESTAMP,
         ENTRY_TIMESTAMP,
-        -- Create hash to track changes specifically in M0NAME and M0SPCM
         MD5(CONCAT_WS('|',
             COALESCE(M0SLRP::VARCHAR, ''),
             COALESCE(M0NAME::VARCHAR, ''),
@@ -39,7 +36,6 @@ ranked_source AS (
 
 {% if is_incremental() %}
 
--- Incremental logic when the table already exists
 , current_dim AS (
     SELECT 
         SURROGATE_KEY,
@@ -70,7 +66,8 @@ records_to_expire AS (
         NULL AS INGESTION_TIMESTAMP,
         cd.TRACKING_HASH,
         cd.VALID_FROM,
-        rs.ENTRY_TIMESTAMP AS VALID_TO,
+        -- Subtract 1 second from ENTRY_TIMESTAMP to avoid overlap
+        DATEADD(SECOND, -1, rs.ENTRY_TIMESTAMP) AS VALID_TO,
         FALSE AS IS_CURRENT,
         CURRENT_TIMESTAMP() AS DBT_UPDATED_AT,
         'DBT' AS DBT_UPDATED_BY
@@ -115,7 +112,7 @@ SELECT * FROM new_records
 
 {% else %}
 
--- Initial load logic when the table doesn't exist yet
+-- Initial full load (only for first run)
 SELECT 
     ROW_NUMBER() OVER (ORDER BY M0SLRP) AS SURROGATE_KEY,
     M0SLRP,
@@ -135,7 +132,6 @@ SELECT
     NULL AS VALID_TO,
     TRUE AS IS_CURRENT
 FROM ranked_source
--- Take only the latest record for each M0SLRP in the initial load
 QUALIFY ROW_NUMBER() OVER (PARTITION BY M0SLRP ORDER BY ENTRY_TIMESTAMP DESC) = 1
 
 {% endif %}
