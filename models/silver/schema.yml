@@ -3,7 +3,6 @@ version: 2
 sources:
   - name: raw_data                # will become source('raw_data', ...)
     database: RAW_DATA            # your Snowflake database
-    schema: BRONZE_SALES          # your Snowflake schema
+    schema: SILVER_SALES          # your Snowflake schema
     tables:
-      - name: T_BRZ_SALESREP_MASTER_SASLRM
-      - name: T_BRZ_SALESREP_MASTER_SASLR_CLONE
+      - name: DIM_SASLRM_FULL
