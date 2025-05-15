@@ -1,11 +1,12 @@
-{{
+{{  
   config(
     materialized = 'incremental',
-    unique_key = 'SURROGATE_KEY',
+    unique_key = ['M0SLRP', 'VALID_FROM'],
     incremental_strategy = 'merge'
   )
 }}
 
+-- Extract source and calculate tracking hash
 WITH source_data AS (
     SELECT        
         M0SLRP,
@@ -27,6 +28,7 @@ WITH source_data AS (
     FROM {{ source('raw_data', 'T_BRZ_SALESREP_MASTER_SASLR_CLONE') }}
 ),
 
+-- Rank source changes by M0SLRP and ENTRY_TIMESTAMP
 ranked_source AS (
     SELECT
         *,
@@ -36,49 +38,63 @@ ranked_source AS (
 
 {% if is_incremental() %}
 
+-- Get current dimension table state
 , current_dim AS (
     SELECT 
-        SURROGATE_KEY,
+    SURROGATE_KEY,
         M0SLRP,
-        VALID_FROM,
-        VALID_TO,
-        IS_CURRENT,
-        TRACKING_HASH
+    M0NAME,
+    M0SPCM,
+    SOURCE_SYSTEM,
+    SOURCE_FILE_NAME,
+    BATCH_ID,
+    RECORD_CHECKSUM,
+    ETL_VERSION,
+    INGESTION_Date,
+    INGESTION_TIMESTAMP,
+    TRACKING_HASH,
+    VALID_FROM,
+    VALID_TO,
+    IS_CURRENT,
+    DBT_UPDATED_AT,
+    DBT_UPDATED_BY
     FROM {{ this }}
+    WHERE IS_CURRENT = TRUE
 ),
 
+-- Get max surrogate key for generating new ones
 max_key AS (
     SELECT COALESCE(MAX(SURROGATE_KEY), 0) AS MAX_KEY FROM {{ this }}
 ),
 
+-- Expire old records with changed data
 records_to_expire AS (
     SELECT
-        cd.SURROGATE_KEY,
+		cd.SURROGATE_KEY,
         cd.M0SLRP,
-        NULL AS M0NAME,
-        NULL AS M0SPCM,
-        NULL AS SOURCE_SYSTEM,
-        NULL AS SOURCE_FILE_NAME,
-        NULL AS BATCH_ID,
-        NULL AS RECORD_CHECKSUM,
-        NULL AS ETL_VERSION,
-        NULL AS INGESTION_Date,
-        NULL AS INGESTION_TIMESTAMP,
+        cd.M0NAME,
+        cd.M0SPCM,
+        cd.SOURCE_SYSTEM,
+        cd.SOURCE_FILE_NAME,
+        cd.BATCH_ID,
+        cd.RECORD_CHECKSUM,
+        cd.ETL_VERSION,
+        cd.INGESTION_Date,
+        cd.INGESTION_TIMESTAMP,
         cd.TRACKING_HASH,
         cd.VALID_FROM,
-        -- Subtract 1 second from ENTRY_TIMESTAMP to avoid overlap
-        DATEADD(SECOND, -1, rs.ENTRY_TIMESTAMP) AS VALID_TO,
+        rs.ENTRY_TIMESTAMP - INTERVAL '1 second' AS VALID_TO,
         FALSE AS IS_CURRENT,
         CURRENT_TIMESTAMP() AS DBT_UPDATED_AT,
         'DBT' AS DBT_UPDATED_BY
-    FROM current_dim cd
-    JOIN ranked_source rs
-      ON cd.M0SLRP = rs.M0SLRP
+    FROM ranked_source rs
+    JOIN current_dim cd
+      ON rs.M0SLRP = cd.M0SLRP
     WHERE rs.ENTRY_TIMESTAMP > cd.VALID_FROM
-      AND cd.IS_CURRENT = TRUE
       AND rs.TRACKING_HASH != cd.TRACKING_HASH
 ),
 
+-- Insert new records (changed or new M0SLRP)
 new_records AS (
     SELECT
         mk.MAX_KEY + ROW_NUMBER() OVER (ORDER BY rs.M0SLRP, rs.ENTRY_TIMESTAMP) AS SURROGATE_KEY,
@@ -100,21 +116,22 @@ new_records AS (
         'DBT' AS DBT_UPDATED_BY
     FROM ranked_source rs
     LEFT JOIN current_dim cd
-      ON rs.M0SLRP = cd.M0SLRP AND cd.IS_CURRENT = TRUE
+      ON rs.M0SLRP = cd.M0SLRP
     CROSS JOIN max_key mk
     WHERE cd.M0SLRP IS NULL 
        OR (rs.ENTRY_TIMESTAMP > cd.VALID_FROM AND rs.TRACKING_HASH != cd.TRACKING_HASH)
 )
 
+-- Final output: expired and new records
 SELECT * FROM records_to_expire
 UNION ALL
 SELECT * FROM new_records
 
 {% else %}
 
--- Initial full load (only for first run)
+-- Initial full load: keep only latest record per M0SLRP
 SELECT 
-    ROW_NUMBER() OVER (ORDER BY M0SLRP) AS SURROGATE_KEY,
+    ROW_NUMBER() OVER (ORDER BY M0SLRP, ENTRY_TIMESTAMP) AS SURROGATE_KEY,
     M0SLRP,
     M0NAME,
     M0SPCM,
@@ -126,11 +143,11 @@ SELECT
     INGESTION_Date,
     INGESTION_TIMESTAMP,
     TRACKING_HASH,
-    CURRENT_TIMESTAMP() AS DBT_UPDATED_AT,
-    'DBT' AS DBT_UPDATED_BY,
     ENTRY_TIMESTAMP AS VALID_FROM,
     NULL AS VALID_TO,
-    TRUE AS IS_CURRENT
+    TRUE AS IS_CURRENT,
+    CURRENT_TIMESTAMP() AS DBT_UPDATED_AT,
+    'DBT' AS DBT_UPDATED_BY
 FROM ranked_source
 QUALIFY ROW_NUMBER() OVER (PARTITION BY M0SLRP ORDER BY ENTRY_TIMESTAMP DESC) = 1
 
