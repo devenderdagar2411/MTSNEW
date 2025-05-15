@@ -5,4 +5,4 @@ sources:
     database: RAW_DATA            # your Snowflake database
     schema: SILVER_SALES          # your Snowflake schema
     tables:
-      - name: DIM_SASLRM_FULL
+      - name: DIM_SAS_FULL_LOAD
