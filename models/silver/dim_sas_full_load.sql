@@ -34,7 +34,7 @@ WITH source_data AS (
 ranked_source AS (
     SELECT *,
         ROW_NUMBER() OVER (
-            PARTITION BY M0SLRP, ENTRY_TIMESTAMP
+            PARTITION BY M0SLRP
             ORDER BY ENTRY_TIMESTAMP DESC
         ) AS rn
     FROM source_data
@@ -78,9 +78,9 @@ ordered_changes AS (
 -- Step 6: Generate new version rows
 new_rows AS (
     SELECT
-        max_key.max_sk + ROW_NUMBER() OVER (
+        ROW_NUMBER() OVER (
             ORDER BY oc.M0SLRP, oc.ENTRY_TIMESTAMP
-        ) AS SURROGATE_KEY,
+        ) + max_key.max_sk   AS SURROGATE_KEY,
         oc.M0SLRP,
         oc.M0NAME,
         oc.M0SPCM,
@@ -110,6 +110,7 @@ new_rows AS (
         WHERE tgt.M0SLRP = oc.M0SLRP
           AND tgt.TRACKING_HASH = oc.TRACKING_HASH
           AND tgt.VALID_FROM = oc.ENTRY_TIMESTAMP
+          and IS_CURRENT=TRUE
     )
 ),
 
