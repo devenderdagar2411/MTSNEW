@@ -34,7 +34,7 @@ WITH source_data AS (
 ranked_source AS (
     SELECT *,
         ROW_NUMBER() OVER (
-            PARTITION BY M0SLRP
+            PARTITION BY M0SLRP, ENTRY_TIMESTAMP
             ORDER BY ENTRY_TIMESTAMP DESC
         ) AS rn
     FROM source_data
@@ -110,7 +110,7 @@ new_rows AS (
         WHERE tgt.M0SLRP = oc.M0SLRP
           AND tgt.TRACKING_HASH = oc.TRACKING_HASH
           AND tgt.VALID_FROM = oc.ENTRY_TIMESTAMP
-          and IS_CURRENT=TRUE
+          
     )
 ),
 
