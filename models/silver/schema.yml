@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: silver_data                # will become source('raw_data', ...)
-    database: RAW_DATA            # your Snowflake database
+    database: ANALYTICS           # your Snowflake database
     schema: SILVER_SALES          # your Snowflake schema
     tables:
-      - name: DIM_SAS_FULL_LOAD
+      - name: T_DIM_STORE

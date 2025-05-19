@@ -41,6 +41,7 @@ models:
       +materialized: table
     silver:
       +schema: SILVER_SALES
+      +database: ANALYTICS          # target database
       +materialized: incremental
 
     

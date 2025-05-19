@@ -1,23 +1,24 @@
 {{ config(
     materialized = 'incremental',
-    unique_key = ['SURROGATE_KEY']
+    unique_key = ['SALES_REP_SK']
 ) }}
 
 -- Step 1: Load new data from source
 WITH source_data AS (
     SELECT        
-        M0SLRP AS SALES_REP_NUMBER,
-        M0NAME AS SALES_REP_NAME,
-        M0SPCM AS SPIFF_COMMISSION_FLAG,
-        SOURCE_SYSTEM,
-        SOURCE_FILE_NAME,
-        BATCH_ID,
-        RECORD_CHECKSUM_HASH,
-        ETL_VERSION,
-        INGESTION_DT,
-        INGESTION_DTTM,
-        ENTRY_TIMESTAMP
-    FROM RAW_DATA.BRONZE_SALES.T_BRZ_SALESREP_MASTER_SASLRM
+         CAST(TRIM(M0SLRP) AS NUMBER(5, 0)) AS SALES_REP_NUMBER,
+        CAST(TRIM(M0NAME) AS VARCHAR(50)) AS SALES_REP_NAME,
+        CAST(TRIM(M0SPCM) AS VARCHAR(1)) AS SPIFF_COMMISSION_FLAG,
+        CAST(TRIM(SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
+        CAST(TRIM(SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
+        CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
+        CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
+        MD5(CONCAT_WS('|',
+            COALESCE(TRIM(M0NAME), ''),
+            COALESCE(TRIM(M0SPCM), '')
+        )) AS RECORD_CHECKSUM_HASH,        
+        TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
+    FROM {{ source('bronze_data', 'T_BRZ_SALESREP_MASTER_SASLRM') }}
     {% if is_incremental() %}
         WHERE ENTRY_TIMESTAMP > (
             SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
@@ -76,22 +77,23 @@ new_rows AS (
         oc.SALES_REP_NUMBER,
         oc.SALES_REP_NAME,
         oc.SPIFF_COMMISSION_FLAG,
+		oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
+		CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
+            ELSE NULL
+        END AS EXPIRATION_DATE,
+		CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
+            ELSE TRUE
+        END AS IS_CURRENT_FLAG,
         oc.SOURCE_SYSTEM,
         oc.SOURCE_FILE_NAME,
         oc.BATCH_ID,
         oc.RECORD_CHECKSUM_HASH,
         oc.ETL_VERSION,
-        oc.INGESTION_DTTM,
-        oc.INGESTION_DT,
-        oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
-            ELSE NULL
-        END AS EXPIRATION_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
-            ELSE TRUE
-        END AS IS_CURRENT_FLAG
+        CURRENT_TIMESTAMP as INGESTION_DTTM,
+        CURRENT_DATE as INGESTION_DT         
+        
     FROM ordered_changes oc
     CROSS JOIN max_key
     WHERE NOT EXISTS (
@@ -99,6 +101,7 @@ new_rows AS (
         WHERE tgt.SALES_REP_NUMBER = oc.SALES_REP_NUMBER
           AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
+		  AND tgt.IS_CURRENT_FLAG = TRUE
     )
 ),
 
@@ -108,17 +111,17 @@ expired_rows AS (
         old.SALES_REP_SK,
         old.SALES_REP_NUMBER,
         old.SALES_REP_NAME,
-        old.SPIFF_COMMISSION_FLAG,
-        old.SOURCE_SYSTEM,
+        old.SPIFF_COMMISSION_FLAG, 
+		old.EFFECTIVE_DATE,
+        new.EFFECTIVE_DATE - INTERVAL '1 second' AS EXPIRATION_DATE,
+        FALSE AS IS_CURRENT_FLAG,
+		old.SOURCE_SYSTEM,
         old.SOURCE_FILE_NAME,
         old.BATCH_ID,
         old.RECORD_CHECKSUM_HASH,
         old.ETL_VERSION,
-        old.INGESTION_DTTM,
-        old.INGESTION_DT,
-        old.EFFECTIVE_DATE,
-        new.EFFECTIVE_DATE - INTERVAL '1 second' AS EXPIRATION_DATE,
-        FALSE AS IS_CURRENT_FLAG
+		old.INGESTION_DTTM,
+        old.INGESTION_DT
     FROM {{ this }} old
     JOIN new_rows new
       ON old.SALES_REP_NUMBER = new.SALES_REP_NUMBER
