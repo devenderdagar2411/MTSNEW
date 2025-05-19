@@ -8,3 +8,4 @@ sources:
       - name: T_BRZ_SALESREP_MASTER_SASLRM
       - name: T_BRZ_STORE_MASTER_STMAST    
       - name: T_BRZ_STOREMANAGER_STMGRS
+      - name: T_BRZ_FORMTYPE_WOFMTP
