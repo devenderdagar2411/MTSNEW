@@ -6,4 +6,5 @@ sources:
     schema: BRONZE_SALES          # your Snowflake schema
     tables:
       - name: T_BRZ_SALESREP_MASTER_SASLRM
-      - name: T_BRZ_STORE_MASTER
+      - name: T_BRZ_STORE_MASTER_STMAST    
+      - name: T_BRZ_STOREMANAGER_STMGRS

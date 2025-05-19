@@ -5,4 +5,4 @@ sources:
     database: ANALYTICS           # your Snowflake database
     schema: SILVER_SALES          # your Snowflake schema
     tables:
-      - name: 
+      - name: T_DIM_STORE
