@@ -78,9 +78,9 @@ ordered_changes AS (
 -- Step 6: Generate new version rows
 new_rows AS (
     SELECT
-        max_key.max_sk + ROW_NUMBER() OVER (
+        ROW_NUMBER() OVER (
             ORDER BY oc.M0SLRP, oc.ENTRY_TIMESTAMP
-        ) AS SURROGATE_KEY,
+        ) + max_key.max_sk   AS SURROGATE_KEY,
         oc.M0SLRP,
         oc.M0NAME,
         oc.M0SPCM,
@@ -110,6 +110,7 @@ new_rows AS (
         WHERE tgt.M0SLRP = oc.M0SLRP
           AND tgt.TRACKING_HASH = oc.TRACKING_HASH
           AND tgt.VALID_FROM = oc.ENTRY_TIMESTAMP
+          
     )
 ),
 
