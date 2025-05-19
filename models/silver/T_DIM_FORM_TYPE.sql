@@ -52,9 +52,10 @@ WITH source_data AS (
             COALESCE(TRIM(W0IVCE), '')
         )) AS RECORD_CHECKSUM_HASH,        
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
-    FROM {{ source('raw_data', 'T_BRZ_FORMTYPE_WOFMTP') }}
+    FROM {{ source('bronze_data', 'T_BRZ_FORMTYPE_WOFMTP') }}
     {% if is_incremental() %}
-        
+        WHERE ENTRY_TIMESTAMP > (
+            SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
     {% endif %}
 ),
 
