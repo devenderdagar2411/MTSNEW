@@ -63,7 +63,7 @@ WITH source_data AS (
 ranked_source AS (
     SELECT *,
         ROW_NUMBER() OVER (
-            PARTITION BY FORM_TYPE_CODE, ENTRY_TIMESTAMP
+            PARTITION BY FORM_TYPE_CODE
             ORDER BY ENTRY_TIMESTAMP DESC
         ) AS rn
     FROM source_data

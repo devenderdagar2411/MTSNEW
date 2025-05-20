@@ -55,7 +55,7 @@ WITH source_data AS (
 ranked_source AS (
     SELECT *,
         ROW_NUMBER() OVER (
-            PARTITION BY STORE_NUMBER, ENTRY_TIMESTAMP
+            PARTITION BY STORE_NUMBER
             ORDER BY ENTRY_TIMESTAMP DESC
         ) AS rn
     FROM source_data
