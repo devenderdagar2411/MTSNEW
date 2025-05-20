@@ -9,3 +9,4 @@ sources:
       - name: T_BRZ_STORE_MASTER_STMAST    
       - name: T_BRZ_STOREMANAGER_STMGRS
       - name: T_BRZ_FORMTYPE_WOFMTP
+      - name: T_BRZ_INV_CAT_INCATG
