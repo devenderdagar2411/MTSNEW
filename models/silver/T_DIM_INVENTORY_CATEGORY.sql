@@ -3,9 +3,8 @@
     unique_key = ['INVENTORY_CATEGORY_SK']
 ) }}
 
--- Step 1: Load new data from source
 WITH source_data AS (
-    SELECT
+    SELECT        
         CAST(TRIM(C1CTCD) AS NUMBER(3, 0)) AS CATEGORY_ID,
         CAST(TRIM(C1NAME) AS VARCHAR(40)) AS CATEGORY_NAME,
         CAST(TRIM(C1PCDP) AS NUMBER(3, 0)) AS PC_DEPARTMENT_CODE,
@@ -53,14 +52,16 @@ WITH source_data AS (
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_INV_CAT_INCATG') }}
     {% if is_incremental() %}
-        
+        WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
     {% endif %}
 ),
 
 ranked_source AS (
-    SELECT *, ROW_NUMBER() OVER (
-        PARTITION BY CATEGORY_ID ORDER BY ENTRY_TIMESTAMP DESC
-    ) AS rn
+    SELECT *,
+        ROW_NUMBER() OVER (
+            PARTITION BY CATEGORY_ID
+            ORDER BY ENTRY_TIMESTAMP DESC
+        ) AS rn
     FROM source_data
 ),
 
@@ -80,9 +81,14 @@ source_with_lag AS (
 changes AS (
     SELECT *
     FROM source_with_lag
-    WHERE RECORD_CHECKSUM_HASH != prev_hash 
-       OR prev_hash IS NULL 
-       OR OPERATION = 'DELETE'
+    WHERE (RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL)
+      AND OPERATION != 'DELETE'
+),
+
+deletes AS (
+    SELECT *
+    FROM deduplicated_source
+    WHERE OPERATION = 'DELETE'
 ),
 
 max_key AS (
@@ -90,27 +96,63 @@ max_key AS (
 ),
 
 ordered_changes AS (
-    SELECT *, LEAD(ENTRY_TIMESTAMP) OVER (
-        PARTITION BY CATEGORY_ID ORDER BY ENTRY_TIMESTAMP
-    ) AS next_entry_ts
+    SELECT *,
+        LEAD(ENTRY_TIMESTAMP) OVER (
+            PARTITION BY CATEGORY_ID ORDER BY ENTRY_TIMESTAMP
+        ) AS next_entry_ts
     FROM changes
 ),
 
 new_rows AS (
     SELECT
-        ROW_NUMBER() OVER (ORDER BY CATEGORY_ID, ENTRY_TIMESTAMP) + max_key.max_sk AS INVENTORY_CATEGORY_SK,
-        oc.*,
-        oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE
+        ROW_NUMBER() OVER (
+            ORDER BY oc.CATEGORY_ID, oc.ENTRY_TIMESTAMP
+        ) + max_key.max_sk AS INVENTORY_CATEGORY_SK,
+        oc.CATEGORY_ID,
+        oc.CATEGORY_NAME,
+        oc.PC_DEPARTMENT_CODE,
+        oc.PC_GROUP_CODE,
+        oc.MECHANIC_GROUP_CODE,
+        oc.MECHANIC_DETAIL_NUMBER,
+        oc.COST_REQUIRED_AT_POS_FLAG,
+        oc.DOT_NUMBER_ALLOWED_AT_POS_FLAG,
+        oc.STATE_TIRE_FEE_FLAG,
+        oc.LOGIC_95_CENTS_FLAG,
+        oc.SIZE_SEARCH_FLIP_4_FLAG,
+        oc.MILEAGE_IN_OUT_PRINT_FLAG,
+        oc.HOURS_IN_OUT_PRINT_FLAG,
+        oc.PRECISION_QUANTITY_ENTRY_FLAG,
+        oc.POS_PRICE_AT_NAB_FLAG,
+        oc.SIZE_REQUIRED_AT_POS_FLAG,
+        oc.DESCRIPTION_REQUIRED_AT_POS_FLAG,
+        oc.DO_NOT_AVERAGE_COST_FLAG,
+        oc.ROAD_HAZARD_FLAG,
+        oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
+        CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
+            ELSE NULL
+        END AS EXPIRATION_DATE,
+        CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
+            ELSE TRUE
+        END AS IS_CURRENT_FLAG,
+        oc.SOURCE_SYSTEM,
+        oc.SOURCE_FILE_NAME,
+        oc.BATCH_ID,
+        oc.RECORD_CHECKSUM_HASH,
+        oc.ETL_VERSION,
+        CURRENT_TIMESTAMP() AS INGESTION_DTTM,
+        CURRENT_DATE() AS INGESTION_DT
     FROM ordered_changes oc
     CROSS JOIN max_key
     WHERE NOT EXISTS (
-        SELECT 1 FROM {{ this }} tgt
+        SELECT 1
+        FROM {{ this }} tgt
         WHERE tgt.CATEGORY_ID = oc.CATEGORY_ID
           AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
           AND tgt.IS_CURRENT_FLAG = TRUE
     )
-
 ),
 
 expired_rows AS (
@@ -150,50 +192,48 @@ expired_rows AS (
       ON old.CATEGORY_ID = new.CATEGORY_ID
      AND old.IS_CURRENT_FLAG = TRUE
      AND old.RECORD_CHECKSUM_HASH != new.RECORD_CHECKSUM_HASH
+),
+
+soft_deleted_rows AS (
+    SELECT
+        old.INVENTORY_CATEGORY_SK,
+        old.CATEGORY_ID,
+        old.CATEGORY_NAME,
+        old.PC_DEPARTMENT_CODE,
+        old.PC_GROUP_CODE,
+        old.MECHANIC_GROUP_CODE,
+        old.MECHANIC_DETAIL_NUMBER,
+        old.COST_REQUIRED_AT_POS_FLAG,
+        old.DOT_NUMBER_ALLOWED_AT_POS_FLAG,
+        old.STATE_TIRE_FEE_FLAG,
+        old.LOGIC_95_CENTS_FLAG,
+        old.SIZE_SEARCH_FLIP_4_FLAG,
+        old.MILEAGE_IN_OUT_PRINT_FLAG,
+        old.HOURS_IN_OUT_PRINT_FLAG,
+        old.PRECISION_QUANTITY_ENTRY_FLAG,
+        old.POS_PRICE_AT_NAB_FLAG,
+        old.SIZE_REQUIRED_AT_POS_FLAG,
+        old.DESCRIPTION_REQUIRED_AT_POS_FLAG,
+        old.DO_NOT_AVERAGE_COST_FLAG,
+        old.ROAD_HAZARD_FLAG,
+        old.EFFECTIVE_DATE,
+        del.ENTRY_TIMESTAMP AS EXPIRATION_DATE,
+        FALSE AS IS_CURRENT_FLAG,
+        old.SOURCE_SYSTEM,
+        old.SOURCE_FILE_NAME,
+        old.BATCH_ID,
+        old.RECORD_CHECKSUM_HASH,
+        old.ETL_VERSION,
+        old.INGESTION_DTTM,
+        old.INGESTION_DT
+    FROM {{ this }} old
+    JOIN deletes del
+      ON old.CATEGORY_ID = del.CATEGORY_ID
+     AND old.IS_CURRENT_FLAG = TRUE
 )
 
--- Final Output
-SELECT
-    INVENTORY_CATEGORY_SK,
-    CATEGORY_ID,
-    CATEGORY_NAME,
-    PC_DEPARTMENT_CODE,
-    PC_GROUP_CODE,
-    MECHANIC_GROUP_CODE,
-    MECHANIC_DETAIL_NUMBER,
-    COST_REQUIRED_AT_POS_FLAG,
-    DOT_NUMBER_ALLOWED_AT_POS_FLAG,
-    STATE_TIRE_FEE_FLAG,
-    LOGIC_95_CENTS_FLAG,
-    SIZE_SEARCH_FLIP_4_FLAG,
-    MILEAGE_IN_OUT_PRINT_FLAG,
-    HOURS_IN_OUT_PRINT_FLAG,
-    PRECISION_QUANTITY_ENTRY_FLAG,
-    POS_PRICE_AT_NAB_FLAG,
-    SIZE_REQUIRED_AT_POS_FLAG,
-    DESCRIPTION_REQUIRED_AT_POS_FLAG,
-    DO_NOT_AVERAGE_COST_FLAG,
-    ROAD_HAZARD_FLAG,
-    EFFECTIVE_DATE,
-    CASE
-        WHEN OPERATION = 'DELETE' THEN ENTRY_TIMESTAMP
-        WHEN next_entry_ts IS NOT NULL THEN next_entry_ts - INTERVAL '1 second'
-        ELSE NULL
-    END AS EXPIRATION_DATE,
-    CASE
-        WHEN OPERATION = 'DELETE' THEN FALSE
-        WHEN next_entry_ts IS NOT NULL THEN FALSE
-        ELSE TRUE
-    END AS IS_CURRENT_FLAG,
-    SOURCE_SYSTEM,
-    SOURCE_FILE_NAME,
-    BATCH_ID,
-    RECORD_CHECKSUM_HASH,
-    ETL_VERSION,
-    CURRENT_TIMESTAMP AS INGESTION_DTTM,
-    CURRENT_DATE AS INGESTION_DT
-FROM new_rows
-
-UNION ALL
-
 SELECT * FROM expired_rows
+UNION ALL
+SELECT * FROM new_rows
+UNION ALL
+SELECT * FROM soft_deleted_rows
