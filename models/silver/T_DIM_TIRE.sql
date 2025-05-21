@@ -52,7 +52,9 @@ WITH source_data AS (
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_TIRE_MASTER_ITCLVT') }}
     {% if is_incremental() %}
-        WHERE ENTRY_TIMESTAMP = '1900-01-01T00:00:00Z'
+       WHERE ENTRY_TIMESTAMP > (
+            SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
+        )
     {% endif %}
 ),
 
@@ -212,7 +214,7 @@ soft_deletes AS (
         old.EXTENSION_FIELD_28,
         old.EXTENSION_FIELD_29,
         old.EFFECTIVE_DATE,
-        del.ENTRY_TIMESTAMP - INTERVAL '1 second' AS EXPIRATION_DATE,
+        del.ENTRY_TIMESTAMP AS EXPIRATION_DATE,
         FALSE AS IS_CURRENT_FLAG,
         old.SOURCE_SYSTEM,
         old.SOURCE_FILE_NAME,
