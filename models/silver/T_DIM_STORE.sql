@@ -3,7 +3,6 @@
     unique_key = ['STORE_SK']
 ) }}
 
--- Step 1: Load new data from source
 WITH source_data AS (
     SELECT
         CAST(TRIM(A4STORE) AS NUMBER(3,0)) AS STORE_NUMBER,
@@ -18,11 +17,11 @@ WITH source_data AS (
         CAST(TRIM(A4FDID) AS VARCHAR(9)) AS FEDERAL_ID,
         CAST(TRIM(A4STID) AS VARCHAR(9)) AS STATE_ID,
         CAST(TRIM(A4WIPX) AS VARCHAR(3)) AS POS_PREFIX,
-        CAST(TRIM(A4LO) AS NUMBER(3,0)) AS LOCATION_NUMBER,
-        CAST(TRIM(A4CO) AS NUMBER(3,0)) AS MASTER_COMPANY_NUMBER,
+        CAST(NULLIF(TRIM(A4LO), '') AS NUMBER(3,0)) AS LOCATION_NUMBER,
+        CAST(NULLIF(TRIM(A4CO), '') AS NUMBER(3,0)) AS MASTER_COMPANY_NUMBER,
         CAST(TRIM(A4MSWX) AS VARCHAR(1)) AS STORE_MASTER_WAREHOUSE_FLAG,
-        CAST(TRIM(A4MWST) AS NUMBER(3,0)) AS MASTER_WAREHOUSE_NUMBER,
-        CAST(TRIM(A4TERR) AS NUMBER(3,0)) AS SALES_TERRITORY,
+        CAST(NULLIF(TRIM(A4MWST), '') AS NUMBER(3,0)) AS MASTER_WAREHOUSE_NUMBER,
+        CAST(NULLIF(TRIM(A4TERR), '') AS NUMBER(3,0)) AS SALES_TERRITORY,
         CAST(TRIM(A4PHN1) AS VARCHAR(10)) AS PHONE_NUMBER_1,
         CAST(TRIM(A4PEX1) AS VARCHAR(4)) AS EXTENSION_1,
         CAST(TRIM(A4PHN2) AS VARCHAR(10)) AS PHONE_NUMBER_2,
@@ -31,27 +30,47 @@ WITH source_data AS (
         CAST(TRIM(A4PEX3) AS VARCHAR(4)) AS EXTENSION_3,
         CAST(TRIM(A4FAX) AS VARCHAR(10)) AS FAX_NUMBER,
         CAST(TRIM(A4PRT) AS VARCHAR(10)) AS PRINTER,
-        CAST(TRIM(A4TDCD) AS NUMBER(10,0)) AS TAX_DISTRICT_CODE,
+        CAST(NULLIF(TRIM(A4TDCD), '') AS NUMBER(10,0)) AS TAX_DISTRICT_CODE,
         CAST(TRIM(SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
         CAST(TRIM(SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
         CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
         CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
+        CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
         MD5(CONCAT_WS('|',
+           COALESCE(TRIM(A4PSTN), ''),
             COALESCE(TRIM(A4NAME), ''),
             COALESCE(TRIM(A4ADR1), ''),
+            COALESCE(TRIM(A4ADR2), ''),
+            COALESCE(TRIM(A4ADR3), ''),
             COALESCE(TRIM(A4CITY), ''),
-            COALESCE(TRIM(A4STAT), '')
+            COALESCE(TRIM(A4STAT), ''),
+            COALESCE(TRIM(A4ZIP), ''),
+            COALESCE(TRIM(A4FDID), ''),
+            COALESCE(TRIM(A4STID), ''),
+            COALESCE(TRIM(A4WIPX), ''),
+            COALESCE(TRIM(A4LO), ''),
+            COALESCE(TRIM(A4CO), ''),
+            COALESCE(TRIM(A4MSWX), ''),
+            COALESCE(TRIM(A4MWST), ''),
+            COALESCE(TRIM(A4TERR), ''),
+            COALESCE(TRIM(A4PHN1), ''),
+            COALESCE(TRIM(A4PEX1), ''),
+            COALESCE(TRIM(A4PHN2), ''),
+            COALESCE(TRIM(A4PEX2), ''),
+            COALESCE(TRIM(A4PHN3), ''),
+            COALESCE(TRIM(A4PEX3), ''),
+            COALESCE(TRIM(A4FAX), ''),
+            COALESCE(TRIM(A4PRT), ''),
+            COALESCE(TRIM(A4TDCD), '')
         )) AS RECORD_CHECKSUM_HASH,
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_STORE_MASTER_STMAST') }}
     {% if is_incremental() %}
-        WHERE ENTRY_TIMESTAMP > (
-            SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
-        )
+        WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
+        
     {% endif %}
 ),
 
--- Step 2: Deduplication
 ranked_source AS (
     SELECT *,
         ROW_NUMBER() OVER (
@@ -60,11 +79,11 @@ ranked_source AS (
         ) AS rn
     FROM source_data
 ),
+
 deduplicated_source AS (
     SELECT * FROM ranked_source WHERE rn = 1
 ),
 
--- Step 3: Detect changes
 source_with_lag AS (
     SELECT
         curr.*,
@@ -73,18 +92,24 @@ source_with_lag AS (
         ) AS prev_hash
     FROM deduplicated_source curr
 ),
+
 changes AS (
     SELECT *
     FROM source_with_lag
-    WHERE RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL
+    WHERE (RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL)
+      AND OPERATION != 'DELETE'
 ),
 
--- Step 4: Max SK
+deletes AS (
+    SELECT *
+    FROM deduplicated_source
+    WHERE OPERATION = 'DELETE'
+),
+
 max_key AS (
     SELECT COALESCE(MAX(STORE_SK), 0) AS max_sk FROM {{ this }}
 ),
 
--- Step 5: Calculate expiration
 ordered_changes AS (
     SELECT *,
         LEAD(ENTRY_TIMESTAMP) OVER (
@@ -93,7 +118,6 @@ ordered_changes AS (
     FROM changes
 ),
 
--- Step 6: New rows
 new_rows AS (
     SELECT
         ROW_NUMBER() OVER (
@@ -149,7 +173,8 @@ new_rows AS (
     FROM ordered_changes oc
     CROSS JOIN max_key
     WHERE NOT EXISTS (
-        SELECT 1 FROM {{ this }} tgt
+        SELECT 1
+        FROM {{ this }} tgt
         WHERE tgt.STORE_NUMBER = oc.STORE_NUMBER
           AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
@@ -157,7 +182,6 @@ new_rows AS (
     )
 ),
 
--- Step 7: Expire old rows
 expired_rows AS (
     SELECT
         old.STORE_SK,
@@ -207,9 +231,61 @@ expired_rows AS (
       ON old.STORE_NUMBER = new.STORE_NUMBER
      AND old.IS_CURRENT_FLAG = TRUE
      AND old.RECORD_CHECKSUM_HASH != new.RECORD_CHECKSUM_HASH
+),
+
+soft_deletes AS (
+    SELECT
+        old.STORE_SK,
+        old.STORE_NUMBER,
+        old.PARENT_STORE_NUMBER,
+        old.STORE_NAME,
+        old.ADDRESS_LINE_1,
+        old.ADDRESS_LINE_2,
+        old.ADDRESS_LINE_3,
+        old.CITY,
+        old.STATE,
+        old.ZIP_CODE,
+        old.FEDERAL_ID,
+        old.STATE_ID,
+        old.POS_PREFIX,
+        old.LOCATION_NUMBER,
+        old.MASTER_COMPANY_NUMBER,
+        old.STORE_MASTER_WAREHOUSE_FLAG,
+        old.MASTER_WAREHOUSE_NUMBER,
+        old.SALES_TERRITORY,
+        old.PHONE_NUMBER_1,
+        old.EXTENSION_1,
+        old.PHONE_NUMBER_2,
+        old.EXTENSION_2,
+        old.PHONE_NUMBER_3,
+        old.EXTENSION_3,
+        old.FAX_NUMBER,
+        old.PRINTER,
+        old.TAX_DISTRICT_CODE,
+        old.REGION,
+        old.COUNTY,
+        old.COUNTRY,
+        old.LATITUDE,
+        old.LONGITUDE,
+        old.EFFECTIVE_DATE,
+        del.ENTRY_TIMESTAMP AS EXPIRATION_DATE,
+        FALSE AS IS_CURRENT_FLAG,
+        old.SOURCE_SYSTEM,
+        old.SOURCE_FILE_NAME,
+        old.BATCH_ID,
+        old.RECORD_CHECKSUM_HASH,
+        old.ETL_VERSION,
+        old.INGESTION_DTTM,
+        old.INGESTION_DT
+    FROM {{ this }} old
+    JOIN deletes del
+      ON old.STORE_NUMBER = del.STORE_NUMBER
+     AND old.IS_CURRENT_FLAG = TRUE
 )
 
--- Step 8: Final Output
+-- Final output
 SELECT * FROM expired_rows
+UNION ALL
+SELECT * FROM soft_deletes
 UNION ALL
 SELECT * FROM new_rows
