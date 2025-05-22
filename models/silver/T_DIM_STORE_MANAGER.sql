@@ -130,7 +130,7 @@ new_rows AS (
     CROSS JOIN max_key
     LEFT JOIN {{ ref('T_DIM_STORE') }} dim
       ON dim.STORE_NUMBER = oc.STORE_NUMBER
-     AND dim.IS_CURRENT_FLAG = TRUE
+     AND oc.ENTRY_TIMESTAMP BETWEEN dim.EFFECTIVE_DATE AND COALESCE(dim.EXPIRATION_DATE, '9999-12-31')
     WHERE NOT EXISTS (
         SELECT 1
         FROM {{ this }} tgt
