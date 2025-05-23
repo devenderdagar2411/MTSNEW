@@ -12,3 +12,4 @@ sources:
       - name: T_BRZ_INV_CAT_INCATG
       - name: T_BRZ_CUSTOMER_MASTER_SACUST
       - name: T_BRZ_TIRE_MASTER_ITCLVT
+      - name: T_BRZ_HEADER_WOMSTH
