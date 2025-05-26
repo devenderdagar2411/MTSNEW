@@ -6,7 +6,3 @@ sources:
     schema: SILVER_SALES          # your Snowflake schema
     tables:
       - name: T_DIM_STORE
-      - name: T_DIM_PRODUCT
-      - name: T_DIM_INVENTORY_CATEGORY
-      - name: T_DIM_DATE
-      - name: T_DIM_MECHANIC

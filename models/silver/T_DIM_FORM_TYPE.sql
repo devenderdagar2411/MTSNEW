@@ -3,7 +3,6 @@
     unique_key = ['FORM_TYPE_SK']
 ) }}
 
--- Step 1: Load new data from source
 WITH source_data AS (
     SELECT        
         CAST(TRIM(W0FMTP) AS VARCHAR(2)) AS FORM_TYPE_CODE,
@@ -30,6 +29,7 @@ WITH source_data AS (
         CAST(TRIM(SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
         CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
         CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
+        CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
         MD5(CONCAT_WS('|',
             COALESCE(TRIM(W0NAME), ''),
             COALESCE(TRIM(W0DRBL), ''),
@@ -56,6 +56,7 @@ WITH source_data AS (
     {% if is_incremental() %}
         WHERE ENTRY_TIMESTAMP > (
             SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
+        )
     {% endif %}
 ),
 
@@ -63,7 +64,7 @@ WITH source_data AS (
 ranked_source AS (
     SELECT *,
         ROW_NUMBER() OVER (
-            PARTITION BY FORM_TYPE_CODE, ENTRY_TIMESTAMP
+            PARTITION BY FORM_TYPE_CODE
             ORDER BY ENTRY_TIMESTAMP DESC
         ) AS rn
     FROM source_data
@@ -72,7 +73,7 @@ deduplicated_source AS (
     SELECT * FROM ranked_source WHERE rn = 1
 ),
 
--- Step 3: Detect changes based on RECORD_CHECKSUM_HASH
+-- Step 3: Detect inserts/updates
 source_with_lag AS (
     SELECT
         curr.*,
@@ -84,7 +85,15 @@ source_with_lag AS (
 changes AS (
     SELECT *
     FROM source_with_lag
-    WHERE RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL
+    WHERE (RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL)
+      AND OPERATION != 'DELETE'
+),
+
+-- Step 3b: Detect deletes
+deletes AS (
+    SELECT *
+    FROM deduplicated_source
+    WHERE OPERATION = 'DELETE'
 ),
 
 -- Step 4: Get max surrogate key
@@ -92,7 +101,7 @@ max_key AS (
     SELECT COALESCE(MAX(FORM_TYPE_SK), 0) AS max_sk FROM {{ this }}
 ),
 
--- Step 5: Calculate future expiration dates
+-- Step 5: Calculate future expiration dates for changes
 ordered_changes AS (
     SELECT *,
         LEAD(ENTRY_TIMESTAMP) OVER (
@@ -101,7 +110,7 @@ ordered_changes AS (
     FROM changes
 ),
 
--- Step 6: Generate new rows
+-- Step 6: Generate new SCD2 rows for inserts/updates
 new_rows AS (
     SELECT
         ROW_NUMBER() OVER (
@@ -146,7 +155,8 @@ new_rows AS (
     FROM ordered_changes oc
     CROSS JOIN max_key
     WHERE NOT EXISTS (
-        SELECT 1 FROM {{ this }} tgt
+        SELECT 1
+        FROM {{ this }} tgt
         WHERE tgt.FORM_TYPE_CODE = oc.FORM_TYPE_CODE
           AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
@@ -154,7 +164,7 @@ new_rows AS (
     )
 ),
 
--- Step 7: Expire old current rows
+-- Step 7: Expire old current rows when updates happen
 expired_rows AS (
     SELECT
         old.FORM_TYPE_SK,
@@ -193,9 +203,51 @@ expired_rows AS (
       ON old.FORM_TYPE_CODE = new.FORM_TYPE_CODE
      AND old.IS_CURRENT_FLAG = TRUE
      AND old.RECORD_CHECKSUM_HASH != new.RECORD_CHECKSUM_HASH
+),
+
+-- Step 8: Soft deletes - expire records if source says DELETE
+soft_deletes AS (
+    SELECT
+        old.FORM_TYPE_SK,
+        old.FORM_TYPE_CODE,
+        old.FORM_TYPE_NAME,
+        old.DIRECT_BILLING_FLAG,
+        old.POS_SELECT_FLAG,
+        old.MECHANIC_REQUIRED_FLAG,
+        old.COST_REQUIRED_FLAG,
+        old.PRINT_PRICING_FLAG,
+        old.PRINT_INVOICE_AMOUNT_FLAG,
+        old.CREDIT_MEMO_FLAG,
+        old.STATE_TIRE_FEE_FLAG,
+        old.INVOICING_FORMTYPE,
+        old.PAID_OUT_FLAG,
+        old.DR_SUBSYSTEM,
+        old.CREDIT_LIMIT_CHECKING_FLAG,
+        old.QUOTE_FLAG,
+        old.QUOTE_PRINT_AS_INVOICE_FLAG,
+        old.PHONE_NUMBER_REQUIRED_FLAG,
+        old.ROAD_HAZARD_PROTECTION_FLAG,
+        old.DOT_NUMBER_REQUIRED_FLAG,
+        old.INVOICE_ENTRY_REQUIRED_FLAG,
+        old.EFFECTIVE_DATE,
+        del.ENTRY_TIMESTAMP AS EXPIRATION_DATE,
+        FALSE AS IS_CURRENT_FLAG,
+        old.SOURCE_SYSTEM,
+        old.SOURCE_FILE_NAME,
+        old.BATCH_ID,
+        old.RECORD_CHECKSUM_HASH,
+        old.ETL_VERSION,
+        old.INGESTION_DTTM,
+        old.INGESTION_DT
+    FROM {{ this }} old
+    JOIN deletes del
+      ON old.FORM_TYPE_CODE = del.FORM_TYPE_CODE
+     AND old.IS_CURRENT_FLAG = TRUE
 )
 
--- Step 8: Final Output
+-- Final output
 SELECT * FROM expired_rows
+UNION ALL
+SELECT * FROM soft_deletes
 UNION ALL
 SELECT * FROM new_rows
