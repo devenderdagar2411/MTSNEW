@@ -9,3 +9,4 @@ sources:
       - name: T_DIM_PRODUCT
       - name: T_DIM_INVENTORY_CATEGORY
       - name: T_DIM_DATE
+      - name: T_DIM_MECHANIC
