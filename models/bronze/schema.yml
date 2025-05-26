@@ -16,3 +16,4 @@ sources:
       - name: T_BRZ_CUSTOMER_MASTER_SACUST
       - name: T_BRZ_TIRE_MASTER_ITCLVT
       - name: T_BRZ_HEADER_WOMSTH
+      - name: T_BRZ_CATEGORY_GRP_NAME_CTGPNM
