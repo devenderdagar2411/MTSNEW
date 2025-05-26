@@ -1,265 +1,69 @@
 {{ config(
     materialized = 'incremental',
-    unique_key = ['WORK_ORDER_HEADER_SK']
+    unique_key = ['STORE_MANAGER_SK']
 ) }}
 
 WITH source_data AS (
     SELECT
-        -- Key fields
-        CAST(TRIM(W1STORE) AS NUMBER(3, 0)) AS STORE_NUMBER,
-        CAST(TRIM(W1FMTP) AS VARCHAR(10)) AS FORM_TYPE_CODE,
-        CAST(TRIM(W1WIPX) AS VARCHAR(10)) AS POS_PREFIX,
-        CAST(TRIM(W1WO) AS NUMBER(10, 0)) AS WORK_ORDER_NUMBER,
-
-        -- Date fields
-        CAST(TRIM(W1TRDT) AS VARCHAR(8)) AS TRANSACTION_DATE,
-        CAST(TRIM(W1OTDT) AS VARCHAR(8)) AS ORIGIN_TRANSACTION_DATE,
-        TRY_TO_DATE(TRIM(W1PRDT), 'YYYYMMDD') AS PRINT_DT,
-        CAST(TRIM(W1REGN) AS NUMBER(10, 0)) AS CASH_REGISTER_NUMBER,
-
-        -- Dimension references
-        CAST(TRIM(W1SRST) AS NUMBER(3, 0)) AS SALES_REP_STORE_NUMBER,
-        CAST(TRIM(W1SLRP) AS NUMBER(10, 0)) AS SALES_REP_NUMBER,
-        CAST(TRIM(W1CST) AS NUMBER(10, 0)) AS CUSTOMER_NUMBER,
-        CAST(TRIM(W1NAVD) AS NUMBER(10, 0)) AS NATIONAL_ACCOUNT_VENDOR_NUMBER,
-        CAST(TRIM(W1VSTS) AS VARCHAR(20)) AS VEHICLE_STATUS,
-        CAST(TRIM(W1SHPN) AS NUMBER(10, 0)) AS SHIPPING_TO_NUMBER,
-
-        -- Customer information
-        CAST(TRIM(W1NAME) AS VARCHAR(100)) AS CUSTOMER_NAME,
-        CAST(TRIM(W1ADR1) AS VARCHAR(100)) AS ADDRESS_LINE_1,
-        CAST(TRIM(W1ADR2) AS VARCHAR(100)) AS ADDRESS_LINE_2,
-        CAST(TRIM(W1ADR3) AS VARCHAR(100)) AS ADDRESS_LINE_3,
-        CAST(TRIM(W1CITY) AS VARCHAR(50)) AS CITY,
-        CAST(TRIM(W1STAT) AS VARCHAR(10)) AS STATE,
-        CAST(TRIM(W1ZIP) AS VARCHAR(20)) AS ZIP_CODE,
-        CAST(TRIM(W1WPHN) AS VARCHAR(20)) AS WORK_PHONE,
-        CAST(TRIM(W1WPE1) AS VARCHAR(10)) AS WORK_PHONE_EXT,
-        CAST(TRIM(W1HPHN) AS VARCHAR(20)) AS HOME_PHONE,
-        CAST(TRIM(W1TMCD) AS NUMBER(3, 0)) AS TERMS_CODE,
-        CAST(TRIM(W1TXCD) AS NUMBER(3, 0)) AS TAX_CODE,
-        CAST(TRIM(W1TDCD) AS NUMBER(10, 0)) AS TAX_DISTRICT_CODE,
-        CAST(TRIM(W1BLCD) AS NUMBER(3, 0)) AS BILLING_CODE,
-        CAST(TRIM(W1DRNO) AS VARCHAR(20)) AS DRIVER_NUMBER,
-        CAST(TRIM(W1PO) AS VARCHAR(50)) AS PURCHASE_ORDER_NUMBER,
-
-        -- Shipping information
-        CAST(TRIM(W1SHNM) AS VARCHAR(100)) AS SHIPPING_NAME,
-        CAST(TRIM(W1SAD1) AS VARCHAR(100)) AS SHIP_ADDRESS_1,
-        CAST(TRIM(W1SAD2) AS VARCHAR(100)) AS SHIP_ADDRESS_2,
-        CAST(TRIM(W1SAD3) AS VARCHAR(100)) AS SHIP_ADDRESS_3,
-        CAST(TRIM(W1SCTY) AS VARCHAR(50)) AS SHIP_CITY,
-        CAST(TRIM(W1SSTA) AS VARCHAR(10)) AS SHIP_STATE,
-        CAST(TRIM(W1SZIP) AS VARCHAR(20)) AS SHIP_ZIP,
-
-        -- Origin information
-        CAST(TRIM(W1OFMT) AS VARCHAR(10)) AS ORIGIN_FORM_TYPE_CODE,
-        CAST(TRIM(W1OSRS) AS NUMBER(20, 0)) AS ORIGIN_SALES_REP_STORE_NUMBER,
-        CAST(TRIM(W1OSLR) AS NUMBER(20, 0)) AS ORIGIN_SALES_REP_NUMBER,
-        CAST(TRIM(W1STS) AS VARCHAR(20)) AS WORK_ORDER_STATUS,
-
-        -- Flag fields
-        CAST(TRIM(W1HOLD) AS VARCHAR(10)) AS HOLD_FLAG,
-        CAST(TRIM(W1QSTS) AS VARCHAR(10)) AS QUESTION_ASKED_FLAG,
-        CAST(TRIM(W1CSTS) AS VARCHAR(10)) AS COMMENT_FLAG,
-        CAST(TRIM(W1AR) AS VARCHAR(10)) AS ACCT_REVERSAL_FLAG,
-        CAST(TRIM(W1PYMT) AS VARCHAR(10)) AS PAYMENT_FLAG,
-        CAST(TRIM(W1PYNM) AS VARCHAR(50)) AS PAYMENT_TYPE_NAME,
-
-        -- Fact fields (measures)
-        CAST(TRIM(W1TEXM) AS NUMERIC(12,2)) AS TOTAL_TAX_EXEMPT_AMT,
-        CAST(TRIM(W1TTXB) AS NUMERIC(12,2)) AS TOTAL_TAXABLE_AMT,
-        CAST(TRIM(W1TSLT) AS NUMERIC(12,2)) AS SALES_SALES_TAX_AMT,
-        CAST(TRIM(W1TAMT) AS NUMERIC(12,2)) AS TOTAL_AMOUNT,
-        CAST(TRIM(W1AMT) AS NUMERIC(12,2)) AS TOTAL_EXTENDED_AMT,
-        CAST(TRIM(W1CAMT) AS NUMERIC(12,2)) AS TOTAL_EXTENDED_COST_AMT,
-        CAST(TRIM(W1AMTGP) AS NUMERIC(12,2)) AS TOTAL_EXTENDED_GP_AMT,
-        CAST(TRIM(W1CAMTGP) AS NUMERIC(12,2)) AS TOTAL_EXTENDED_COST_GP_AMT,
-        CAST(TRIM(W1GPAM) AS NUMERIC(12,2)) AS TOTAL_GP_AMT,
-        CAST(TRIM(W1GPMG) AS NUMERIC(9,2)) AS TOTAL_PROFIT_MARGIN,
-        CAST(TRIM(W1GPNM) AS NUMERIC(12,2)) AS TOTAL_GP_NAB_AMT,
-        CAST(TRIM(W1GPNG) AS NUMERIC(9,2)) AS TOTAL_NAB_PROFIT_MARGIN,
-        CAST(TRIM(W1TSAM) AS NUMERIC(12,2)) AS TOTAL_SPIFF_AMT,
-        CAST(TRIM(W1TSPT) AS NUMBER(3, 0)) AS TOTAL_SPIFF_POINTS,
-        CAST(TRIM(W1TFEE) AS NUMERIC(12,2)) AS TOTAL_TIRE_FEE,
-        CAST(TRIM(W1PRSQ) AS NUMBER(10, 0)) AS NUMBER_OF_TIMES_PRINTED,
-        CAST(TRIM(W1NACD) AS NUMBER(9,2)) AS NAB_CREDIT_DUE,
-        CAST(TRIM(W1NACR) AS NUMERIC(9,2)) AS NAB_CREDIT_RECEIVED,
-        CAST(TRIM(W1NACP) AS NUMBER(9,2)) AS NAB_CREDIT_PENDING,
-
-        -- Additional dimension fields
-        CAST(TRIM(W1ARST) AS NUMERIC(20, 0)) AS CREDITED_SALES_REP_STORE_NUMBER,
-        CAST(TRIM(W1ARRP) AS NUMERIC(20, 0)) AS CREDITED_SALES_REP_NUMBER,
-        CAST(TRIM(W1STOREO) AS NUMERIC(20, 0)) AS ORIGIN_INVOICED_STORE_NUMBER,
-        CAST(TRIM(W1FMTPO) AS VARCHAR(10)) AS ORIGIN_INVOICED_FORM_TYPE_CODE,
-        CAST(TRIM(W1WIPXO) AS VARCHAR(10)) AS ORIGIN_INVOICED_POS_PREFIX,
-        CAST(TRIM(W1WOO) AS NUMERIC(10, 0)) AS ORIGIN_INVOICED_WORK_ORDER_NUMBER,
-        CAST(TRIM(W1CPAT) AS VARCHAR(10)) AS CORP_AUTH_ASKED_FLAG,
-
-        -- Audit columns
+        CAST(TRIM(M3STORE) AS NUMBER(3, 0)) AS STORE_NUMBER,
+        CAST(TRIM(M3NAME) AS VARCHAR(40)) AS MANAGER_NAME,
+        CAST(TRIM("M3CELL#") AS VARCHAR(10)) AS CELL_NUMBER,
+        CAST(TRIM(M3EMAIL) AS VARCHAR(60)) AS EMAIL_ADDRESS,
+        CAST(NULLIF(TRIM(M3SLRP), '') AS NUMBER(5, 0)) AS BASYS_SALESREP_NUMBER,
+        CAST(NULLIF(TRIM(M3RSM), '') AS NUMBER(5, 0)) AS REGIONAL_SALES_MANAGER_NUMBER,
+        CAST(NULLIF(TRIM(M3ROM), '') AS NUMBER(5, 0)) AS REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        CAST(NULLIF(TRIM(M3ADM), '') AS NUMBER(5, 0)) AS AREA_DIRECTOR_MANAGER_NUMBER,
+        CAST(NULLIF(TRIM(M3PAY), '') AS NUMBER(5, 0)) AS PAYROLL_SALESREP_NUMBER,
+        CAST(NULLIF(TRIM(M3MGR), '') AS NUMBER(5, 0)) AS STORE_MANAGER_SALESREP_NUMBER,
+        CAST(NULLIF(TRIM(M3MFGROM), '') AS NUMBER(5, 0)) AS MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER,
         CAST(TRIM(SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
         CAST(TRIM(SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
         CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
         CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
         CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
-        
-        -- Create a tracking hash for change detection
         MD5(CONCAT_WS('|',
-            COALESCE(TRIM(W1TRDT), ''),
-            COALESCE(TRIM(W1OTDT), ''),
-            COALESCE(TRIM(W1PRDT), ''),
-            COALESCE(TRIM(W1REGN), ''),
-            COALESCE(TRIM(W1SRST), ''),
-            COALESCE(TRIM(W1SLRP), ''),
-            COALESCE(TRIM(W1CST), ''),
-            COALESCE(TRIM(W1NAVD), ''),
-            COALESCE(TRIM(W1VSTS), ''),
-            COALESCE(TRIM(W1SHPN), ''),
-            COALESCE(TRIM(W1NAME), ''),
-            COALESCE(TRIM(W1ADR1), ''),
-            COALESCE(TRIM(W1ADR2), ''),
-            COALESCE(TRIM(W1ADR3), ''),
-            COALESCE(TRIM(W1CITY), ''),
-            COALESCE(TRIM(W1STAT), ''),
-            COALESCE(TRIM(W1ZIP), ''),
-            COALESCE(TRIM(W1WPHN), ''),
-            COALESCE(TRIM(W1WPE1), ''),
-            COALESCE(TRIM(W1HPHN), ''),
-            COALESCE(TRIM(W1TMCD), ''),
-            COALESCE(TRIM(W1TXCD), ''),
-            COALESCE(TRIM(W1TDCD), ''),
-            COALESCE(TRIM(W1BLCD), ''),
-            COALESCE(TRIM(W1DRNO), ''),
-            COALESCE(TRIM(W1PO), ''),
-            COALESCE(TRIM(W1SHNM), ''),
-            COALESCE(TRIM(W1SAD1), ''),
-            COALESCE(TRIM(W1SAD2), ''),
-            COALESCE(TRIM(W1SAD3), ''),
-            COALESCE(TRIM(W1SCTY), ''),
-            COALESCE(TRIM(W1SSTA), ''),
-            COALESCE(TRIM(W1SZIP), ''),
-            COALESCE(TRIM(W1OFMT), ''),
-            COALESCE(TRIM(W1OSRS), ''),
-            COALESCE(TRIM(W1OSLR), ''),
-            COALESCE(TRIM(W1STS), ''),
-            COALESCE(TRIM(W1HOLD), ''),
-            COALESCE(TRIM(W1QSTS), ''),
-            COALESCE(TRIM(W1CSTS), ''),
-            COALESCE(TRIM(W1AR), ''),
-            COALESCE(TRIM(W1PYMT), ''),
-            COALESCE(TRIM(W1PYNM), ''),
-            COALESCE(TRIM(W1TEXM), ''),
-            COALESCE(TRIM(W1TTXB), ''),
-            COALESCE(TRIM(W1TSLT), ''),
-            COALESCE(TRIM(W1TAMT), ''),
-            COALESCE(TRIM(W1AMT), ''),
-            COALESCE(TRIM(W1CAMT), ''),
-            COALESCE(TRIM(W1AMTGP), ''),
-            COALESCE(TRIM(W1CAMTGP), ''),
-            COALESCE(TRIM(W1GPAM), ''),
-            COALESCE(TRIM(W1GPMG), ''),
-            COALESCE(TRIM(W1GPNM), ''),
-            COALESCE(TRIM(W1GPNG), ''),
-            COALESCE(TRIM(W1TSAM), ''),
-            COALESCE(TRIM(W1TSPT), ''),
-            COALESCE(TRIM(W1TFEE), ''),
-            COALESCE(TRIM(W1PRSQ), ''),
-            COALESCE(TRIM(W1NACD), ''),
-            COALESCE(TRIM(W1NACR), ''),
-            COALESCE(TRIM(W1NACP), ''),
-            COALESCE(TRIM(W1ARST), ''),
-            COALESCE(TRIM(W1ARRP), ''),
-            COALESCE(TRIM(W1STOREO), ''),
-            COALESCE(TRIM(W1FMTPO), ''),
-            COALESCE(TRIM(W1WIPXO), ''),
-            COALESCE(TRIM(W1WOO), ''),
-            COALESCE(TRIM(W1CPAT), '')
+            COALESCE(TRIM(M3NAME), ''),
+            COALESCE(TRIM("M3CELL#"), ''),
+            COALESCE(TRIM(M3EMAIL), ''),
+            COALESCE(TRIM(M3SLRP), ''),
+            COALESCE(TRIM(M3RSM), ''),
+            COALESCE(TRIM(M3ROM), ''),
+            COALESCE(TRIM(M3ADM), ''),
+            COALESCE(TRIM(M3PAY), ''),
+            COALESCE(TRIM(M3MGR), ''),
+            COALESCE(TRIM(M3MFGROM), '')
         )) AS RECORD_CHECKSUM_HASH,
-        
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
-    FROM {{ source('bronze_data', 'T_BRZ_HEADER_WOMSTH') }}
+    FROM {{ source('bronze_data', 'T_BRZ_STOREMANAGER_STMGRS') }}
     {% if is_incremental() %}
-    WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
-        {% endif %}
+        WHERE ENTRY_TIMESTAMP > (
+            SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
+        )
+    {% endif %}
 ),
 
--- Step 2: Join with dimension tables to get surrogate keys
-source_with_keys AS (
-    SELECT
-        sd.*,
-        dt.DIM_DATE_KEY AS TRANSACTION_DATE_SK,
-        odt.DIM_DATE_KEY AS ORIGIN_TRANSACTION_SK,
-        sm.STORE_MANAGER_SK as STORE_MANAGER_SK,
-        srst.STORE_SK AS SALES_REP_STORE_SK,
-        sr.SALES_REP_SK,
-        c.CUSTOMER_SK,
-        -- Additional surrogate keys for form types
-        ft.FORM_TYPE_SK AS ORIGIN_FORM_TYPE_SK,
-        ift.FORM_TYPE_SK AS ORIGIN_INVOICED_FORM_TYPE_SK,
-        -- Additional surrogate keys for stores
-        orst.STORE_SK AS ORIGIN_SALES_REP_STORE_SK,
-        crst.STORE_SK AS CREDITED_SALES_REP_STORE_SK,
-        ist.STORE_SK AS ORIGIN_INVOICED_STORE_SK,
-        -- Additional surrogate keys for sales reps
-        orsr.SALES_REP_SK AS ORIGIN_SALES_REP_SK,
-        crsr.SALES_REP_SK AS CREDITED_SALES_REP_SK
-    FROM source_data sd
-    -- Date dimension lookups
-    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} dt ON dt.DATE_KEY = sd.TRANSACTION_DATE 
-    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} odt ON odt.DATE_KEY = sd.ORIGIN_TRANSACTION_DATE
-
-    --StoreManager dimension lookup
-
-    LEFT JOIN {{ ref('T_DIM_STORE_MANAGER') }} sm ON sm.STORE_NUMBER = sd.SALES_REP_STORE_NUMBER AND sm.IS_CURRENT_FLAG = TRUE
-
-    
-    -- Store dimension lookups
-    LEFT JOIN {{ ref('T_DIM_STORE') }} srst ON srst.STORE_NUMBER = sd.SALES_REP_STORE_NUMBER AND sd.ENTRY_TIMESTAMP BETWEEN srst.EFFECTIVE_DATE AND COALESCE(srst.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_STORE') }} orst ON orst.STORE_NUMBER = sd.ORIGIN_SALES_REP_STORE_NUMBER AND sd.ENTRY_TIMESTAMP BETWEEN orst.EFFECTIVE_DATE AND COALESCE(orst.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_STORE') }} crst ON crst.STORE_NUMBER = sd.CREDITED_SALES_REP_STORE_NUMBER AND sd.ENTRY_TIMESTAMP BETWEEN crst.EFFECTIVE_DATE AND COALESCE(crst.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_STORE') }} ist ON ist.STORE_NUMBER = sd.ORIGIN_INVOICED_STORE_NUMBER AND sd.ENTRY_TIMESTAMP BETWEEN ist.EFFECTIVE_DATE AND COALESCE(ist.EXPIRATION_DATE, '9999-12-31')
-    
-    -- Sales rep dimension lookups
-    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} sr ON sr.SALES_REP_NUMBER = sd.SALES_REP_NUMBER AND sd.ENTRY_TIMESTAMP BETWEEN sr.EFFECTIVE_DATE AND COALESCE(sr.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} orsr ON orsr.SALES_REP_NUMBER = sd.ORIGIN_SALES_REP_NUMBER AND sd.ENTRY_TIMESTAMP BETWEEN orsr.EFFECTIVE_DATE AND COALESCE(orsr.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} crsr ON crsr.SALES_REP_NUMBER = sd.CREDITED_SALES_REP_NUMBER AND sd.ENTRY_TIMESTAMP BETWEEN crsr.EFFECTIVE_DATE AND COALESCE(crsr.EXPIRATION_DATE, '9999-12-31')
-    
-    -- Form type dimension lookups
-    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ft ON ft.FORM_TYPE_CODE = sd.ORIGIN_FORM_TYPE_CODE AND sd.ENTRY_TIMESTAMP BETWEEN ft.EFFECTIVE_DATE AND COALESCE(ft.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ift ON ift.FORM_TYPE_CODE = sd.ORIGIN_INVOICED_FORM_TYPE_CODE AND sd.ENTRY_TIMESTAMP BETWEEN ift.EFFECTIVE_DATE AND COALESCE(ift.EXPIRATION_DATE, '9999-12-31')
-    
-    -- Customer dimension lookup
-    LEFT JOIN {{ ref('T_DIM_CUSTOMER') }} c ON c.CUSTOMER_ID = sd.CUSTOMER_NUMBER AND sd.ENTRY_TIMESTAMP BETWEEN c.EFFECTIVE_DATE AND COALESCE(c.EXPIRATION_DATE, '9999-12-31')
-),
-
--- Step 3: Rank records by business key to handle duplicates
+-- Step 2: Deduplication
 ranked_source AS (
-    SELECT 
-        swk.*,
+    SELECT *,
         ROW_NUMBER() OVER (
-            PARTITION BY CONCAT_WS('|', swk.STORE_NUMBER, swk.FORM_TYPE_CODE, swk.POS_PREFIX, swk.WORK_ORDER_NUMBER)
-            ORDER BY swk.ENTRY_TIMESTAMP DESC
+            PARTITION BY STORE_NUMBER
+            ORDER BY ENTRY_TIMESTAMP DESC
         ) AS rn
-    FROM source_with_keys swk
+    FROM source_data
 ),
-
--- Step 4: Remove duplicates by taking the latest record for each business key
 deduplicated_source AS (
     SELECT * FROM ranked_source WHERE rn = 1
 ),
 
--- Step 5: Add previous hash for change detection
+-- Step 3: Detect inserts/updates
 source_with_lag AS (
     SELECT
         curr.*,
         LAG(RECORD_CHECKSUM_HASH) OVER (
-            PARTITION BY CONCAT_WS('|', curr.STORE_NUMBER, curr.FORM_TYPE_CODE, curr.POS_PREFIX, curr.WORK_ORDER_NUMBER) 
-            ORDER BY curr.ENTRY_TIMESTAMP
+            PARTITION BY STORE_NUMBER ORDER BY ENTRY_TIMESTAMP
         ) AS prev_hash
     FROM deduplicated_source curr
 ),
-
--- Step 6: Identify changes (new records or records with changed hash)
 changes AS (
     SELECT *
     FROM source_with_lag
@@ -267,113 +71,49 @@ changes AS (
       AND OPERATION != 'DELETE'
 ),
 
--- Step 7: Identify deleted records
+-- Step 3b: Detect deletes
 deletes AS (
     SELECT *
     FROM deduplicated_source
     WHERE OPERATION = 'DELETE'
 ),
 
--- Step 8: Get the maximum existing surrogate key
+-- Step 4: Get max surrogate key
 max_key AS (
-    SELECT COALESCE(MAX(WORK_ORDER_HEADER_SK), 0) AS max_sk FROM {{ this }}
+    SELECT COALESCE(MAX(STORE_MANAGER_SK), 0) AS max_sk FROM {{ this }}
 ),
 
--- Step 9: Order changes and prepare for surrogate key assignment
+-- Step 5: Calculate future expiration dates for changes
 ordered_changes AS (
-    SELECT 
-        ch.*,
+    SELECT *,
         LEAD(ENTRY_TIMESTAMP) OVER (
-            PARTITION BY CONCAT_WS('|', ch.STORE_NUMBER, ch.FORM_TYPE_CODE, ch.POS_PREFIX, ch.WORK_ORDER_NUMBER) 
-            ORDER BY ENTRY_TIMESTAMP
+            PARTITION BY STORE_NUMBER ORDER BY ENTRY_TIMESTAMP
         ) AS next_entry_ts
-    FROM changes ch
+    FROM changes
 ),
 
--- Step 10: Generate new records with surrogate keys
+-- Step 6: Generate new SCD2 rows for inserts/updates
 new_rows AS (
     SELECT
         ROW_NUMBER() OVER (
-            ORDER BY CONCAT_WS('|', oc.STORE_NUMBER, oc.FORM_TYPE_CODE, oc.POS_PREFIX, oc.WORK_ORDER_NUMBER), oc.ENTRY_TIMESTAMP
-        ) + max_key.max_sk AS WORK_ORDER_HEADER_SK,
+            ORDER BY oc.STORE_NUMBER, oc.ENTRY_TIMESTAMP
+        ) + max_key.max_sk AS STORE_MANAGER_SK,
         oc.STORE_NUMBER,
-        oc.FORM_TYPE_CODE,
-        oc.POS_PREFIX,
-        oc.WORK_ORDER_NUMBER,
-        oc.TRANSACTION_DATE_SK,
-        oc.ORIGIN_TRANSACTION_SK,
-        oc.PRINT_DT,
-        oc.CASH_REGISTER_NUMBER,
-        oc.STORE_MANAGER_SK,
-        oc.SALES_REP_STORE_SK,
-        oc.SALES_REP_SK,
-        oc.CUSTOMER_SK,
-        oc.NATIONAL_ACCOUNT_VENDOR_NUMBER,
-        oc.VEHICLE_STATUS,
-        oc.SHIPPING_TO_NUMBER,
-        oc.CUSTOMER_NAME,
-        oc.ADDRESS_LINE_1,
-        oc.ADDRESS_LINE_2,
-        oc.ADDRESS_LINE_3,
-        oc.CITY,
-        oc.STATE,
-        oc.ZIP_CODE,
-        oc.WORK_PHONE,
-        oc.WORK_PHONE_EXT,
-        oc.HOME_PHONE,
-        oc.TERMS_CODE,
-        oc.TAX_CODE,
-        oc.TAX_DISTRICT_CODE,
-        oc.BILLING_CODE,
-        oc.DRIVER_NUMBER,
-        oc.PURCHASE_ORDER_NUMBER,
-        oc.SHIPPING_NAME,
-        oc.SHIP_ADDRESS_1,
-        oc.SHIP_ADDRESS_2,
-        oc.SHIP_ADDRESS_3,
-        oc.SHIP_CITY,
-        oc.SHIP_STATE,
-        oc.SHIP_ZIP,
-         CAST(oc.ORIGIN_FORM_TYPE_SK AS NUMBER(20,0)) AS ORIGIN_FORM_TYPE_SK,
-        oc.ORIGIN_SALES_REP_STORE_SK,
-        oc.ORIGIN_SALES_REP_SK,
-        oc.WORK_ORDER_STATUS,
-        oc.HOLD_FLAG,
-        oc.QUESTION_ASKED_FLAG,
-        oc.COMMENT_FLAG,
-        oc.ACCT_REVERSAL_FLAG ,
-        oc.PAYMENT_FLAG,
-        oc.PAYMENT_TYPE_NAME,
-        oc.TOTAL_TAX_EXEMPT_AMT,
-        oc.TOTAL_TAXABLE_AMT,
-        oc.SALES_SALES_TAX_AMT,
-        oc.TOTAL_AMOUNT,
-        oc.TOTAL_EXTENDED_AMT,
-        oc.TOTAL_EXTENDED_COST_AMT,
-        oc.TOTAL_EXTENDED_GP_AMT,
-        oc.TOTAL_EXTENDED_COST_GP_AMT,
-        oc.TOTAL_GP_AMT,
-        oc.TOTAL_PROFIT_MARGIN,
-        oc.TOTAL_GP_NAB_AMT,
-        oc.TOTAL_NAB_PROFIT_MARGIN,
-        oc.TOTAL_SPIFF_AMT,
-        oc.TOTAL_SPIFF_POINTS,
-        oc.TOTAL_TIRE_FEE,
-        oc.NUMBER_OF_TIMES_PRINTED,
-        oc.NAB_CREDIT_DUE,
-        oc.NAB_CREDIT_RECEIVED,
-        oc.NAB_CREDIT_PENDING,
-        oc.CREDITED_SALES_REP_STORE_SK,
-        oc.CREDITED_SALES_REP_SK,
-        oc.ORIGIN_INVOICED_STORE_SK,
-        CAST(oc.ORIGIN_INVOICED_FORM_TYPE_SK AS NUMBER(20,0)) AS ORIGIN_INVOICED_FORM_TYPE_SK,
-        oc.ORIGIN_INVOICED_POS_PREFIX,
-        oc.ORIGIN_INVOICED_WORK_ORDER_NUMBER,
-        oc.CORP_AUTH_ASKED_FLAG,
+        oc.MANAGER_NAME,
+        oc.CELL_NUMBER,
+        oc.EMAIL_ADDRESS,
+        oc.BASYS_SALESREP_NUMBER,
+        oc.REGIONAL_SALES_MANAGER_NUMBER,
+        oc.REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        oc.AREA_DIRECTOR_MANAGER_NUMBER,
+        oc.PAYROLL_SALESREP_NUMBER,
+        oc.STORE_MANAGER_SALESREP_NUMBER,
+        oc.MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        dim.STORE_SK,
         oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
         CASE
             WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
-            ELSE '9999-12-31 23:59:59'::TIMESTAMP_NTZ
+            ELSE NULL
         END AS EXPIRATION_DATE,
         CASE
             WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
@@ -384,100 +124,39 @@ new_rows AS (
         oc.BATCH_ID,
         oc.RECORD_CHECKSUM_HASH,
         oc.ETL_VERSION,
-        CURRENT_TIMESTAMP() AS INGESTION_DTTM,
-        CURRENT_DATE() AS INGESTION_DT
+        CURRENT_TIMESTAMP AS INGESTION_DTTM,
+        CURRENT_DATE AS INGESTION_DT
     FROM ordered_changes oc
     CROSS JOIN max_key
+    LEFT JOIN {{ ref('T_DIM_STORE') }} dim
+      ON dim.STORE_NUMBER = oc.STORE_NUMBER
+     AND oc.ENTRY_TIMESTAMP BETWEEN dim.EFFECTIVE_DATE AND COALESCE(dim.EXPIRATION_DATE, '9999-12-31')
     WHERE NOT EXISTS (
         SELECT 1
-        FROM ANALYTICS.SILVER_SALES.T_FCT_WORK_ORDER_HEADER tgt
-        WHERE CONCAT_WS('|', tgt.STORE_NUMBER, tgt.FORM_TYPE_CODE, tgt.POS_PREFIX, tgt.WORK_ORDER_NUMBER) = 
-              CONCAT_WS('|', oc.STORE_NUMBER, oc.FORM_TYPE_CODE, oc.POS_PREFIX, oc.WORK_ORDER_NUMBER)
+        FROM {{ this }} tgt
+        WHERE tgt.STORE_NUMBER = oc.STORE_NUMBER
           AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
           AND tgt.IS_CURRENT_FLAG = TRUE
     )
 ),
 
--- Step 11: Identify records to expire (current records that have changed)
--- In the expired_rows CTE, add the missing ORIGIN_INVOICED_STORE_SK column
+-- Step 7: Expire old current rows when updates happen
 expired_rows AS (
     SELECT
-        old.WORK_ORDER_HEADER_SK,
-        old.STORE_NUMBER,
-        old.FORM_TYPE_CODE,
-        old.POS_PREFIX,
-        old.WORK_ORDER_NUMBER,
-        old.TRANSACTION_DATE_SK,
-        old.ORIGIN_TRANSACTION_SK,
-        old.PRINT_DT,
-        old.CASH_REGISTER_NUMBER,
         old.STORE_MANAGER_SK,
-        old.SALES_REP_STORE_SK,
-        old.SALES_REP_SK,
-        old.CUSTOMER_SK,
-        old.NATIONAL_ACCOUNT_VENDOR_NUMBER,
-        old.VEHICLE_STATUS,
-        old.SHIPPING_TO_NUMBER,
-        old.CUSTOMER_NAME,
-        old.ADDRESS_LINE_1,
-        old.ADDRESS_LINE_2,
-        old.ADDRESS_LINE_3,
-        old.CITY,
-        old.STATE,
-        old.ZIP_CODE,
-        old.WORK_PHONE,
-        old.WORK_PHONE_EXT,
-        old.HOME_PHONE,
-        old.TERMS_CODE,
-        old.TAX_CODE,
-        old.TAX_DISTRICT_CODE,
-        old.BILLING_CODE,
-        old.DRIVER_NUMBER,
-        old.PURCHASE_ORDER_NUMBER,
-        old.SHIPPING_NAME,
-        old.SHIP_ADDRESS_1,
-        old.SHIP_ADDRESS_2,
-        old.SHIP_ADDRESS_3,
-        old.SHIP_CITY,
-        old.SHIP_STATE,
-        old.SHIP_ZIP,
-        CAST(old.ORIGIN_FORM_TYPE_SK AS NUMBER(20,0)) AS ORIGIN_FORM_TYPE_SK,
-        old.ORIGIN_SALES_REP_STORE_SK,
-        old.ORIGIN_SALES_REP_SK,
-        old.WORK_ORDER_STATUS,
-        old.HOLD_FLAG,
-        old.QUESTION_ASKED_FLAG,
-        old.COMMENT_FLAG,
-        old.ACCT_REVERSAL_FLAG,
-        old.PAYMENT_FLAG,
-        old.PAYMENT_TYPE_NAME,
-        old.TOTAL_TAX_EXEMPT_AMT,
-        old.TOTAL_TAXABLE_AMT,
-        old.SALES_SALES_TAX_AMT,
-        old.TOTAL_AMOUNT,
-        old.TOTAL_EXTENDED_AMT,
-        old.TOTAL_EXTENDED_COST_AMT,
-        old.TOTAL_EXTENDED_GP_AMT,
-        old.TOTAL_EXTENDED_COST_GP_AMT,
-        old.TOTAL_GP_AMT,
-        old.TOTAL_PROFIT_MARGIN,
-        old.TOTAL_GP_NAB_AMT,
-        old.TOTAL_NAB_PROFIT_MARGIN,
-        old.TOTAL_SPIFF_AMT,
-        old.TOTAL_SPIFF_POINTS,
-        old.TOTAL_TIRE_FEE,
-        old.NUMBER_OF_TIMES_PRINTED,
-        old.NAB_CREDIT_DUE,
-        old.NAB_CREDIT_RECEIVED,
-        old.NAB_CREDIT_PENDING,
-        old.CREDITED_SALES_REP_STORE_SK,
-        old.CREDITED_SALES_REP_SK,
-        old.ORIGIN_INVOICED_STORE_SK,  -- Add this missing column
-        CAST(old.ORIGIN_INVOICED_FORM_TYPE_SK AS NUMBER(20,0)) AS ORIGIN_INVOICED_FORM_TYPE_SK,
-        old.ORIGIN_INVOICED_POS_PREFIX,
-        old.ORIGIN_INVOICED_WORK_ORDER_NUMBER,
-        old.CORP_AUTH_ASKED_FLAG,
+        old.STORE_NUMBER,
+        old.MANAGER_NAME,
+        old.CELL_NUMBER,
+        old.EMAIL_ADDRESS,
+        old.BASYS_SALESREP_NUMBER,
+        old.REGIONAL_SALES_MANAGER_NUMBER,
+        old.REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        old.AREA_DIRECTOR_MANAGER_NUMBER,
+        old.PAYROLL_SALESREP_NUMBER,
+        old.STORE_MANAGER_SALESREP_NUMBER,
+        old.MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        old.STORE_SK,
         old.EFFECTIVE_DATE,
         new.EFFECTIVE_DATE - INTERVAL '1 second' AS EXPIRATION_DATE,
         FALSE AS IS_CURRENT_FLAG,
@@ -488,91 +167,29 @@ expired_rows AS (
         old.ETL_VERSION,
         old.INGESTION_DTTM,
         old.INGESTION_DT
-    FROM ANALYTICS.SILVER_SALES.T_FCT_WORK_ORDER_HEADER old
+    FROM {{ this }} old
     JOIN new_rows new
-      ON CONCAT_WS('|', old.STORE_NUMBER, old.FORM_TYPE_CODE, old.POS_PREFIX, old.WORK_ORDER_NUMBER) = 
-         CONCAT_WS('|', new.STORE_NUMBER, new.FORM_TYPE_CODE, new.POS_PREFIX, new.WORK_ORDER_NUMBER)
+      ON old.STORE_NUMBER = new.STORE_NUMBER
      AND old.IS_CURRENT_FLAG = TRUE
      AND old.RECORD_CHECKSUM_HASH != new.RECORD_CHECKSUM_HASH
 ),
--- Step 12: Identify records to soft delete
+
+-- Step 8: Soft deletes - expire records if source says DELETE
 soft_deletes AS (
     SELECT
-        old.WORK_ORDER_HEADER_SK,
-        old.STORE_NUMBER,
-        old.FORM_TYPE_CODE,
-        old.POS_PREFIX,
-        old.WORK_ORDER_NUMBER,
-        old.TRANSACTION_DATE_SK,
-        old.ORIGIN_TRANSACTION_SK,
-        old.PRINT_DT,
-        old.CASH_REGISTER_NUMBER,
         old.STORE_MANAGER_SK,
-        old.SALES_REP_STORE_SK,
-        old.SALES_REP_SK,
-        old.CUSTOMER_SK,
-        old.NATIONAL_ACCOUNT_VENDOR_NUMBER,
-        old.VEHICLE_STATUS,
-        old.SHIPPING_TO_NUMBER,
-        old.CUSTOMER_NAME,
-        old.ADDRESS_LINE_1,
-        old.ADDRESS_LINE_2,
-        old.ADDRESS_LINE_3,
-        old.CITY,
-        old.STATE,
-        old.ZIP_CODE,
-        old.WORK_PHONE,
-        old.WORK_PHONE_EXT,
-        old.HOME_PHONE,
-        old.TERMS_CODE,
-        old.TAX_CODE,
-        old.TAX_DISTRICT_CODE,
-        old.BILLING_CODE,
-        old.DRIVER_NUMBER,
-        old.PURCHASE_ORDER_NUMBER,
-        old.SHIPPING_NAME,
-        old.SHIP_ADDRESS_1,
-        old.SHIP_ADDRESS_2,
-        old.SHIP_ADDRESS_3,
-        old.SHIP_CITY,
-        old.SHIP_STATE,
-        old.SHIP_ZIP,       
-        CAST(old.ORIGIN_FORM_TYPE_SK AS NUMBER(20,0)) AS ORIGIN_FORM_TYPE_SK,
-        old.ORIGIN_SALES_REP_STORE_SK,
-        old.ORIGIN_SALES_REP_SK,
-        old.WORK_ORDER_STATUS,
-        old.HOLD_FLAG,
-        old.QUESTION_ASKED_FLAG,
-        old.COMMENT_FLAG,
-        old.ACCT_REVERSAL_FLAG,
-        old.PAYMENT_FLAG,
-        old.PAYMENT_TYPE_NAME,
-        old.TOTAL_TAX_EXEMPT_AMT,
-        old.TOTAL_TAXABLE_AMT,
-        old.SALES_SALES_TAX_AMT,
-        old.TOTAL_AMOUNT,
-        old.TOTAL_EXTENDED_AMT,
-        old.TOTAL_EXTENDED_COST_AMT,
-        old.TOTAL_EXTENDED_GP_AMT,
-        old.TOTAL_EXTENDED_COST_GP_AMT,
-        old.TOTAL_GP_AMT,
-        old.TOTAL_PROFIT_MARGIN,
-        old.TOTAL_GP_NAB_AMT,
-        old.TOTAL_NAB_PROFIT_MARGIN,
-        old.TOTAL_SPIFF_AMT,
-        old.TOTAL_SPIFF_POINTS,
-        old.TOTAL_TIRE_FEE,
-        old.NUMBER_OF_TIMES_PRINTED,
-        old.NAB_CREDIT_DUE,
-        old.NAB_CREDIT_RECEIVED,
-        old.NAB_CREDIT_PENDING,
-        old.CREDITED_SALES_REP_STORE_SK,
-        old.CREDITED_SALES_REP_SK,
-        old.ORIGIN_INVOICED_STORE_SK,
-        CAST(old.ORIGIN_INVOICED_FORM_TYPE_SK AS NUMBER(20,0)) AS ORIGIN_INVOICED_FORM_TYPE_SK,
-        old.ORIGIN_INVOICED_POS_PREFIX,
-        old.ORIGIN_INVOICED_WORK_ORDER_NUMBER,
-        old.CORP_AUTH_ASKED_FLAG,
+        old.STORE_NUMBER,
+        old.MANAGER_NAME,
+        old.CELL_NUMBER,
+        old.EMAIL_ADDRESS,
+        old.BASYS_SALESREP_NUMBER,
+        old.REGIONAL_SALES_MANAGER_NUMBER,
+        old.REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        old.AREA_DIRECTOR_MANAGER_NUMBER,
+        old.PAYROLL_SALESREP_NUMBER,
+        old.STORE_MANAGER_SALESREP_NUMBER,
+        old.MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        old.STORE_SK,
         old.EFFECTIVE_DATE,
         del.ENTRY_TIMESTAMP AS EXPIRATION_DATE,
         FALSE AS IS_CURRENT_FLAG,
@@ -583,15 +200,15 @@ soft_deletes AS (
         old.ETL_VERSION,
         old.INGESTION_DTTM,
         old.INGESTION_DT
-    FROM ANALYTICS.SILVER_SALES.T_FCT_WORK_ORDER_HEADER old
+    FROM {{ this }} old
     JOIN deletes del
-      ON CONCAT_WS('|', old.STORE_NUMBER, old.FORM_TYPE_CODE, old.POS_PREFIX, old.WORK_ORDER_NUMBER) = 
-         CONCAT_WS('|', del.STORE_NUMBER, del.FORM_TYPE_CODE, del.POS_PREFIX, del.WORK_ORDER_NUMBER)
+      ON old.STORE_NUMBER = del.STORE_NUMBER
      AND old.IS_CURRENT_FLAG = TRUE
 )
 
-select * from new_rows
+-- Final output
+SELECT * FROM expired_rows
 UNION ALL
-select * from expired_rows
+SELECT * FROM soft_deletes
 UNION ALL
-select * FROM soft_deletes
+SELECT * FROM new_rows
