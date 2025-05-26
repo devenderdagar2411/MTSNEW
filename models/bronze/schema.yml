@@ -9,3 +9,6 @@ sources:
       - name: T_BRZ_STORE_MASTER_STMAST    
       - name: T_BRZ_STOREMANAGER_STMGRS
       - name: T_BRZ_FORMTYPE_WOFMTP
+      - name: T_BRZ_MECHANICS_WOMECH
+      - name: T_BRZ_ITEM_MASTER_INITEM
+      - name: T_BRZ_ITEM_WOMSTI

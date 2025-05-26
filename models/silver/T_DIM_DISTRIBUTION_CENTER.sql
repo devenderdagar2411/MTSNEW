@@ -38,7 +38,9 @@ final_data as (
         SOURCE_FILE_NAME,
         BATCH_ID,
         -- Generate checksum using ONLY data field (M5DC)
-        MD5(TO_VARCHAR(M5DC)) as RECORD_CHECKSUM_HASH,
+        MD5(CONCAT_WS('|',
+            COALESCE(TRIM(M5DC), '')
+        )) AS RECORD_CHECKSUM_HASH,
         ETL_VERSION,
         INGESTION_DTTM,
         INGESTION_DT,
