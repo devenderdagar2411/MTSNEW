@@ -49,7 +49,7 @@ WITH source_data AS (
         CAST(TRIM(W1SAD2) AS VARCHAR(100)) AS SHIP_ADDRESS_2,
         CAST(TRIM(W1SAD3) AS VARCHAR(100)) AS SHIP_ADDRESS_3,
         CAST(TRIM(W1SCTY) AS VARCHAR(50)) AS SHIP_CITY,
-        CAST(TRIM(W1SSTa) AS VARCHAR(10)) AS SHIP_STATE,
+        CAST(TRIM(W1SSTA) AS VARCHAR(10)) AS SHIP_STATE,
         CAST(TRIM(W1SZIP) AS VARCHAR(20)) AS SHIP_ZIP,
 
         -- Origin information
@@ -189,6 +189,7 @@ source_with_keys AS (
         sd.*,
         dt.DIM_DATE_KEY AS TRANSACTION_DATE_SK,
         odt.DIM_DATE_KEY AS ORIGIN_TRANSACTION_SK,
+        sm.STORE_MANAGER_SK as STORE_MANAGER_SK,
         srst.STORE_SK AS SALES_REP_STORE_SK,
         sr.SALES_REP_SK,
         c.CUSTOMER_SK,
@@ -206,6 +207,11 @@ source_with_keys AS (
     -- Date dimension lookups
     LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} dt ON dt.DATE_KEY = sd.TRANSACTION_DATE 
     LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} odt ON odt.DATE_KEY = sd.ORIGIN_TRANSACTION_DATE
+
+    --StoreManager dimension lookup
+
+    LEFT JOIN {{ ref('T_DIM_STORE_MANAGER') }} sm ON sm.STORE_NUMBER = sd.SALES_REP_STORE_NUMBER AND sm.IS_CURRENT_FLAG = TRUE
+
     
     -- Store dimension lookups
     LEFT JOIN {{ ref('T_DIM_STORE') }} srst ON srst.STORE_NUMBER = sd.SALES_REP_STORE_NUMBER AND srst.IS_CURRENT_FLAG = TRUE
@@ -298,6 +304,7 @@ new_rows AS (
         oc.ORIGIN_TRANSACTION_SK,
         oc.PRINT_DT,
         oc.CASH_REGISTER_NUMBER,
+        oc.STORE_MANAGER_SK,
         oc.SALES_REP_STORE_SK,
         oc.SALES_REP_SK,
         oc.CUSTOMER_SK,
@@ -405,6 +412,7 @@ expired_rows AS (
         old.ORIGIN_TRANSACTION_SK,
         old.PRINT_DT,
         old.CASH_REGISTER_NUMBER,
+        old.STORE_MANAGER_SK,
         old.SALES_REP_STORE_SK,
         old.SALES_REP_SK,
         old.CUSTOMER_SK,
@@ -499,6 +507,7 @@ soft_deletes AS (
         old.ORIGIN_TRANSACTION_SK,
         old.PRINT_DT,
         old.CASH_REGISTER_NUMBER,
+        old.STORE_MANAGER_SK,
         old.SALES_REP_STORE_SK,
         old.SALES_REP_SK,
         old.CUSTOMER_SK,
