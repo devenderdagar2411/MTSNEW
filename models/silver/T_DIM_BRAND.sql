@@ -49,7 +49,9 @@ final_data as (
         cast(SOURCE_SYSTEM as varchar(100)) as SOURCE_SYSTEM,
         cast(SOURCE_FILE_NAME as varchar(200)) as SOURCE_FILE_NAME,
         cast(BATCH_ID as varchar(50)) as BATCH_ID,
-        md5(coalesce(B99NAME, '')) as RECORD_CHECKSUM_HASH,
+        MD5(CONCAT_WS('|',
+            COALESCE(TRIM(B99BSCD), '')
+        )) AS RECORD_CHECKSUM_HASH
         cast(ETL_VERSION as varchar(20)) as ETL_VERSION,
         cast(INGESTION_DTTM as timestamp_ntz) as INGESTION_DTTM,
         cast(INGESTION_DT as date) as INGESTION_DT

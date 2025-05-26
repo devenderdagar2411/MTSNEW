@@ -9,7 +9,3 @@ sources:
       - name: T_BRZ_STORE_MASTER_STMAST    
       - name: T_BRZ_STOREMANAGER_STMGRS
       - name: T_BRZ_FORMTYPE_WOFMTP
-      - name: T_BRZ_INV_CAT_INCATG
-      - name: T_BRZ_CUSTOMER_MASTER_SACUST
-      - name: T_BRZ_TIRE_MASTER_ITCLVT
-      - name: T_BRZ_HEADER_WOMSTH
