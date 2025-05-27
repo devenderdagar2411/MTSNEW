@@ -1,7 +1,7 @@
 {{ config(
     materialized = 'table',
     schema = 'SILVER_SALES',
-    alias = 'T_DIM_ITEM_INITLB'
+    alias = 'T_DIM_LABOR_ITEMS'
 ) }}
 
 with source_data as (
@@ -16,7 +16,7 @@ with source_data as (
         ETL_VERSION,
         INGESTION_DTTM,
         INGESTION_DT
-    from {{ source('bronze_data', 'T_BRZ_ITEM_INITLB') }}
+    from {{ source('bronze_data', 'T_BRZ_LABOR_ITEMS_INITLB') }}
 ),
 
 ranked_data as (
@@ -46,7 +46,7 @@ final_data as (
 
 select
     CAST(ITEM_ID_KEY AS NUMBER(20,0)) as ITEM_ID_KEY,
-    CAST(Z9ITM AS NUMBER(38,0)) as ITEM_ID,
+    CAST(Z9ITM AS NUMBER(10,0)) as ITEM_ID,
     CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,
     CAST(SOURCE_FILE_NAME AS VARCHAR(200)) as SOURCE_FILE_NAME,
     CAST(BATCH_ID AS VARCHAR(50)) as BATCH_ID,

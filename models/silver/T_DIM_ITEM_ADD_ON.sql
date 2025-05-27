@@ -1,7 +1,7 @@
 {{ config(
     materialized = 'incremental',
     schema = 'SILVER_SALES',
-    alias = 'T_DIM_ITEM_INITEMAO',
+    alias = 'T_DIM_ITEM_ADD_ON',
     unique_key = 'ITEM_NUMBER'
 ) }}
 
@@ -45,7 +45,7 @@ with source_data as (
         ETL_VERSION,
         INGESTION_DTTM,
         INGESTION_DT
-    FROM {{ source('bronze_data', 'T_BRZ_ITEM_INITEMAO') }}
+    FROM {{ source('bronze_data', 'T_BRZ_ITEM_ADD_ON_INITEMAO') }}
 
     {% if is_incremental() %}
     WHERE INGESTION_DTTM > (
