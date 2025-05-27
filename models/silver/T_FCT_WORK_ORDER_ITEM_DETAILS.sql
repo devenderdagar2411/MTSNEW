@@ -154,9 +154,9 @@ source_data AS (
         CURRENT_DATE() AS INGESTION_DT,
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_ITEM_WOMSTI') }}
-       {% if is_incremental() %}
-    WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
-        {% endif %}
+    --    {% if is_incremental() %}
+    -- WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
+    --     {% endif %}
 ),
 
 -- Step 2: Join with dimension tables and generate surrogate key as hash of natural keys
@@ -176,6 +176,7 @@ source_with_keys AS (
         ON sd.INVENTORY_CATEGORY_SK = mech.MECHANIC_SK AND mech.IS_CURRENT_FLAG = TRUE    
     LEFT JOIN {{ source('silver_data', 'T_DIM_INVENTORY_CATEGORY') }} ic
         ON sd.INVENTORY_CATEGORY_SK = ic.INVENTORY_CATEGORY_SK AND ic.IS_CURRENT_FLAG = TRUE
+        WHERE ic.INVENTORY_CATEGORY_SK IS NOT NULL
 ),
 
 -- -- Final output
