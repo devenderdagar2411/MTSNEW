@@ -45,13 +45,13 @@ final_data as (
         INGESTION_DTTM,
         INGESTION_DT,
         -- Generate surrogate key using HASH (ensure positive BIGINT)
-        ABS(HASH(N55GP || '|' || N55NAME)) as CATEGORY_GROUP_KEY_NAME
+        ABS(HASH(N55GP || '|' || N55NAME)) as CATEGORY_GROUP_NAME_KEY
     from ranked_data
     where rn = 1
 )
 
 select
-    CAST(CATEGORY_GROUP_KEY_NAME AS NUMBER(20)) as CATEGORY_GROUP_KEY_NAME,                 -- BIGINT(19)
+    CAST(CATEGORY_GROUP_NAME_KEY AS NUMBER(20)) as CATEGORY_GROUP_NAME_KEY,                 -- BIGINT(19)
     CAST(N55GP AS NUMBER(5)) as GROUP_ID,                                       -- INTEGER(10)
     CAST(N55NAME AS VARCHAR(40)) as GROUP_NAME,                                  -- INTEGER(10)
     CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                     -- VARCHAR(100)
