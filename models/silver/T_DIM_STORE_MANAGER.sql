@@ -11,6 +11,7 @@ WITH source_data AS (
         CAST(TRIM(M3NAME) AS VARCHAR(40)) AS MANAGER_NAME,
         CAST(TRIM("M3CELL#") AS VARCHAR(10)) AS CELL_NUMBER,
         CAST(TRIM(M3EMAIL) AS VARCHAR(60)) AS EMAIL_ADDRESS,
+<<<<<<< HEAD
         CAST(TRIM(M3SLRP) AS NUMBER(5, 0)) AS BASYS_SALESREP_NUMBER,
         CAST(TRIM(M3RSM) AS NUMBER(5, 0)) AS REGIONAL_SALES_MANAGER_NUMBER,
         CAST(TRIM(M3ROM) AS NUMBER(5, 0)) AS REGIONAL_OPERATIONS_MANAGER_NUMBER,
@@ -18,6 +19,8 @@ WITH source_data AS (
         CAST(TRIM(M3PAY) AS NUMBER(5, 0)) AS PAYROLL_SALESREP_NUMBER,
         CAST(TRIM(M3MGR) AS NUMBER(5, 0)) AS STORE_MANAGER_SALESREP_NUMBER,
         CAST(TRIM(M3MFGROM) AS NUMBER(5, 0)) AS MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER,
+=======
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
         CAST(NULLIF(TRIM(M3SLRP), '') AS NUMBER(5, 0)) AS BASYS_SALESREP_NUMBER,
         CAST(NULLIF(TRIM(M3RSM), '') AS NUMBER(5, 0)) AS REGIONAL_SALES_MANAGER_NUMBER,
         CAST(NULLIF(TRIM(M3ROM), '') AS NUMBER(5, 0)) AS REGIONAL_OPERATIONS_MANAGER_NUMBER,
@@ -34,6 +37,7 @@ WITH source_data AS (
         MD5(CONCAT_WS('|',
             COALESCE(TRIM(M3NAME), ''),
             COALESCE(TRIM("M3CELL#"), ''),
+<<<<<<< HEAD
             COALESCE(TRIM(M3MGR), ''),
             COALESCE(TRIM(M3MFGROM), '')
         )) AS RECORD_CHECKSUM_HASH,
@@ -49,10 +53,51 @@ WITH source_data AS (
 ),
 
 -- Step 3: Detect changes
+=======
+            COALESCE(TRIM(M3EMAIL), ''),
+            COALESCE(TRIM(M3SLRP), ''),
+            COALESCE(TRIM(M3RSM), ''),
+            COALESCE(TRIM(M3ROM), ''),
+            COALESCE(TRIM(M3ADM), ''),
+            COALESCE(TRIM(M3PAY), ''),
+            COALESCE(TRIM(M3MGR), ''),
+            COALESCE(TRIM(M3MFGROM), '')
+        )) AS RECORD_CHECKSUM_HASH,
+        TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
+    FROM {{ source('bronze_data', 'T_BRZ_STOREMANAGER_STMGRS') }}
+    {% if is_incremental() %}
+        WHERE ENTRY_TIMESTAMP > (
+            SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
+        )
+    {% endif %}
+),
+
+-- Step 2: Deduplication
+ranked_source AS (
+    SELECT *,
+        ROW_NUMBER() OVER (
+            PARTITION BY STORE_NUMBER
+            ORDER BY ENTRY_TIMESTAMP DESC
+        ) AS rn
+    FROM source_data
+),
+deduplicated_source AS (
+    SELECT * FROM ranked_source WHERE rn = 1
+),
+
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
 -- Step 3: Detect inserts/updates
 source_with_lag AS (
     SELECT
         curr.*,
+<<<<<<< HEAD
+=======
+        LAG(RECORD_CHECKSUM_HASH) OVER (
+            PARTITION BY STORE_NUMBER ORDER BY ENTRY_TIMESTAMP
+        ) AS prev_hash
+    FROM deduplicated_source curr
+),
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
 changes AS (
     SELECT *
     FROM source_with_lag
@@ -73,24 +118,72 @@ max_key AS (
     SELECT COALESCE(MAX(STORE_MANAGER_SK), 0) AS max_sk FROM {{ this }}
 ),
 
+<<<<<<< HEAD
 -- Step 5: Calculate future expiration dates
+=======
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
 -- Step 5: Calculate future expiration dates for changes
 ordered_changes AS (
     SELECT *,
         LEAD(ENTRY_TIMESTAMP) OVER (
+<<<<<<< HEAD
     FROM changes
 ),
 
 -- Step 6: Generate new rows
+=======
+            PARTITION BY STORE_NUMBER ORDER BY ENTRY_TIMESTAMP
+        ) AS next_entry_ts
+    FROM changes
+),
+
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
 -- Step 6: Generate new SCD2 rows for inserts/updates
 new_rows AS (
     SELECT
         ROW_NUMBER() OVER (
+<<<<<<< HEAD
+=======
+            ORDER BY oc.STORE_NUMBER, oc.ENTRY_TIMESTAMP
+        ) + max_key.max_sk AS STORE_MANAGER_SK,
+        oc.STORE_NUMBER,
+        oc.MANAGER_NAME,
+        oc.CELL_NUMBER,
+        oc.EMAIL_ADDRESS,
+        oc.BASYS_SALESREP_NUMBER,
+        oc.REGIONAL_SALES_MANAGER_NUMBER,
+        oc.REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        oc.AREA_DIRECTOR_MANAGER_NUMBER,
+        oc.PAYROLL_SALESREP_NUMBER,
+        oc.STORE_MANAGER_SALESREP_NUMBER,
+        oc.MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        dim.STORE_SK,
+        oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
+        CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
+            ELSE NULL
+        END AS EXPIRATION_DATE,
+        CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
+            ELSE TRUE
+        END AS IS_CURRENT_FLAG,
+        oc.SOURCE_SYSTEM,
+        oc.SOURCE_FILE_NAME,
+        oc.BATCH_ID,
+        oc.RECORD_CHECKSUM_HASH,
+        oc.ETL_VERSION,
+        CURRENT_TIMESTAMP AS INGESTION_DTTM,
+        CURRENT_DATE AS INGESTION_DT
+    FROM ordered_changes oc
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
     CROSS JOIN max_key
     LEFT JOIN {{ ref('T_DIM_STORE') }} dim
       ON dim.STORE_NUMBER = oc.STORE_NUMBER
      AND oc.ENTRY_TIMESTAMP BETWEEN dim.EFFECTIVE_DATE AND COALESCE(dim.EXPIRATION_DATE, '9999-12-31')
+<<<<<<< HEAD
      AND dim.IS_CURRENT_FLAG = TRUE
+=======
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
     WHERE NOT EXISTS (
         SELECT 1 FROM {{ this }} tgt
         SELECT 1
@@ -102,11 +195,41 @@ new_rows AS (
     )
 ),
 
+<<<<<<< HEAD
 -- Step 7: Expire old current rows
+=======
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
 -- Step 7: Expire old current rows when updates happen
 expired_rows AS (
     SELECT
         old.STORE_MANAGER_SK,
+<<<<<<< HEAD
+=======
+        old.STORE_NUMBER,
+        old.MANAGER_NAME,
+        old.CELL_NUMBER,
+        old.EMAIL_ADDRESS,
+        old.BASYS_SALESREP_NUMBER,
+        old.REGIONAL_SALES_MANAGER_NUMBER,
+        old.REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        old.AREA_DIRECTOR_MANAGER_NUMBER,
+        old.PAYROLL_SALESREP_NUMBER,
+        old.STORE_MANAGER_SALESREP_NUMBER,
+        old.MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER,
+        old.STORE_SK,
+        old.EFFECTIVE_DATE,
+        new.EFFECTIVE_DATE - INTERVAL '1 second' AS EXPIRATION_DATE,
+        FALSE AS IS_CURRENT_FLAG,
+        old.SOURCE_SYSTEM,
+        old.SOURCE_FILE_NAME,
+        old.BATCH_ID,
+        old.RECORD_CHECKSUM_HASH,
+        old.ETL_VERSION,
+        old.INGESTION_DTTM,
+        old.INGESTION_DT
+    FROM {{ this }} old
+    JOIN new_rows new
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
       ON old.STORE_NUMBER = new.STORE_NUMBER
      AND old.IS_CURRENT_FLAG = TRUE
      AND old.RECORD_CHECKSUM_HASH != new.RECORD_CHECKSUM_HASH
@@ -144,7 +267,10 @@ soft_deletes AS (
      AND old.IS_CURRENT_FLAG = TRUE
 )
 
+<<<<<<< HEAD
 -- Step 8: Final Output
+=======
+>>>>>>> 821b0f0212bec5c9ba66d6518287685cc94fd831
 -- Final output
 SELECT * FROM expired_rows
 UNION ALL
