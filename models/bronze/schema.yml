@@ -19,3 +19,8 @@ sources:
       - name: T_BRZ_CATEGORY_GRP_NAME_CTGPNM
       - name: T_BRZ_LABOR_ITEMS_INITLB
       - name: T_BRZ_ITEM_ADD_ON_INITEMAO
+      - name: T_BRZ_CUSTOMER_ACCOUNT_SACACH
+      - name: t_brz_brand_inbrnd
+      
+
+
