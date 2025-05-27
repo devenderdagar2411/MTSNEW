@@ -1,7 +1,8 @@
 {{ config(
-    materialized = 'table',
+    materialized = 'incremental',
     schema = 'SILVER_SALES',
-    alias = 'T_DIM_BRAND'
+    alias = 'T_DIM_BRAND',
+    unique_key = 'BRAND_ID'
 ) }}
 
 with source_data as (
@@ -18,10 +19,12 @@ with source_data as (
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
-        ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT
-    from RAW_DATA.BRONZE_SALES.t_brz_brand_inbrnd
+        ETL_VERSION
+    from {{ source('bronze_data', 't_brz_brand_inbrnd') }}
+    {% if is_incremental() %}
+        -- Only pull records newer than the latest already loaded
+        where ENTRY_TIMESTAMP > (select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01') from {{ this }})
+    {% endif %}
 ),
 
 ranked_data as (
@@ -51,11 +54,10 @@ final_data as (
         cast(BATCH_ID as varchar(50)) as BATCH_ID,
         MD5(CONCAT_WS('|',
             COALESCE(TRIM(B99BSCD), '')
-        )) AS RECORD_CHECKSUM_HASH
+        )) AS RECORD_CHECKSUM_HASH,
         cast(ETL_VERSION as varchar(20)) as ETL_VERSION,
-        cast(INGESTION_DTTM as timestamp_ntz) as INGESTION_DTTM,
-        cast(INGESTION_DT as date) as INGESTION_DT
-
+        cast(current_timestamp as timestamp_ntz) as INGESTION_DTTM,
+        cast(current_date as date) as INGESTION_DT
     from ranked_data
     where rn = 1
 )
