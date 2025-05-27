@@ -17,5 +17,5 @@ sources:
       - name: T_BRZ_TIRE_MASTER_ITCLVT
       - name: T_BRZ_HEADER_WOMSTH
       - name: T_BRZ_CATEGORY_GRP_NAME_CTGPNM
-      - name: T_BRZ_ITEM_INITLB
-      - name: T_BRZ_ITEM_INITEMAO
+      - name: T_BRZ_LABOR_ITEMS_INITLB
+      - name: T_BRZ_ITEM_ADD_ON_INITEMAO

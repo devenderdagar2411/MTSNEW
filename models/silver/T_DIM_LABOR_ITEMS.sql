@@ -1,7 +1,7 @@
 {{ config(
     materialized = 'table',
     schema = 'SILVER_SALES',
-    alias = 'T_DIM_ITEM_INITLB'
+    alias = 'T_DIM_LABOR_ITEMS'
 ) }}
 
 with source_data as (
@@ -16,7 +16,7 @@ with source_data as (
         ETL_VERSION,
         INGESTION_DTTM,
         INGESTION_DT
-    from {{ source('bronze_data', 'T_BRZ_ITEM_INITLB') }}
+    from {{ source('bronze_data', 'T_BRZ_LABOR_ITEMS_INITLB') }}
 ),
 
 ranked_data as (
