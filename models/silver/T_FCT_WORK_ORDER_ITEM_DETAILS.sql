@@ -90,11 +90,6 @@ source_data AS (
     CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
 
         MD5(CONCAT(
-            COALESCE(TRIM(W2STORE), ''),
-            COALESCE(TRIM(W2FMTP), ''),
-            COALESCE(TRIM(W2WIPX), ''),
-            COALESCE(TRIM(W2WO), ''),
-            COALESCE(TRIM(W2SEQ), ''),
             COALESCE(TRIM(W2ITM), ''),
             COALESCE(TRIM(W2MFCD), ''),
             COALESCE(TRIM(W2QTY), ''),
@@ -163,13 +158,21 @@ source_data AS (
 source_with_keys AS (
     SELECT
         ROW_NUMBER() OVER (
-            ORDER BY  sd.STORE_NUMBER,sd.FORM_TYPE_CODE,sd.POS_PREFIX ,sd.WORK_ORDER_NUMBER
+            ORDER BY  sd.STORE_NUMBER,sd.FORM_TYPE_CODE,sd.POS_PREFIX ,sd.WORK_ORDER_NUMBER,sd.ITEM_SEQ_NUMBER
         ) AS WORK_ORDER_ITEM_DETAILS_SK,
         sd.*,
+        dim.ORIGIN_TRANSACTION_SK as ORIGIN_TRANSACTION_SK,
+        dim.WORK_ORDER_HEADER_SK as WORK_ORDER_HEADER_SK,
         dp.PRODUCT_SK AS DIM_PRODUCT_SK,
         mech.MECHANIC_SK as DIM_MECHANIC_SK,
         ic.INVENTORY_CATEGORY_SK AS DIM_INVENTORY_CATEGORY_SK
     FROM source_data sd
+    LEFT JOIN {{ ref('T_FCT_WORK_ORDER_HEADER') }} dim
+      ON dim.STORE_NUMBER = sd.STORE_NUMBER
+      and dim.FORM_TYPE_CODE = sd.FORM_TYPE_CODE
+      and dim.POS_PREFIX = sd.POS_PREFIX    
+      and dim.WORK_ORDER_NUMBER = sd.WORK_ORDER_NUMBER
+     AND dim.IS_CURRENT_FLAG = TRUE
     LEFT JOIN  {{ source('silver_data', 'T_DIM_PRODUCT') }} dp
         ON sd.PRODUCT_SK = dp.PRODUCT_SK AND dp.IS_CURRENT_FLAG = TRUE
     LEFT JOIN {{ source('silver_data', 'T_DIM_MECHANIC') }} mech
@@ -188,7 +191,7 @@ ranked_source AS (
     SELECT 
         swk.*,
         ROW_NUMBER() OVER (
-            PARTITION BY CONCAT_WS('|', swk.STORE_NUMBER, swk.FORM_TYPE_CODE, swk.POS_PREFIX, swk.WORK_ORDER_NUMBER)
+            PARTITION BY CONCAT_WS('|', swk.STORE_NUMBER, swk.FORM_TYPE_CODE, swk.POS_PREFIX, swk.WORK_ORDER_NUMBER,swk.ITEM_SEQ_NUMBER)
             ORDER BY swk.ENTRY_TIMESTAMP DESC
         ) AS rn
     FROM source_with_keys swk
@@ -204,7 +207,7 @@ source_with_lag AS (
     SELECT
         curr.*,
         LAG(RECORD_CHECKSUM_HASH) OVER (
-            PARTITION BY CONCAT_WS('|', curr.STORE_NUMBER, curr.FORM_TYPE_CODE, curr.POS_PREFIX, curr.WORK_ORDER_NUMBER) 
+            PARTITION BY CONCAT_WS('|', curr.STORE_NUMBER, curr.FORM_TYPE_CODE, curr.POS_PREFIX, curr.WORK_ORDER_NUMBER,curr.ITEM_SEQ_NUMBER) 
             ORDER BY curr.ENTRY_TIMESTAMP
         ) AS prev_hash
     FROM deduplicated_source curr
@@ -235,7 +238,7 @@ ordered_changes AS (
     SELECT 
         ch.*,
         LEAD(ENTRY_TIMESTAMP) OVER (
-            PARTITION BY CONCAT_WS('|', ch.STORE_NUMBER, ch.FORM_TYPE_CODE, ch.POS_PREFIX, ch.WORK_ORDER_NUMBER) 
+            PARTITION BY CONCAT_WS('|', ch.STORE_NUMBER, ch.FORM_TYPE_CODE, ch.POS_PREFIX, ch.WORK_ORDER_NUMBER,ch.ITEM_SEQ_NUMBER) 
             ORDER BY ENTRY_TIMESTAMP
         ) AS next_entry_ts
     FROM changes ch
@@ -244,7 +247,7 @@ ordered_changes AS (
 new_rows AS (
     SELECT
         ROW_NUMBER() OVER (
-            ORDER BY CONCAT_WS('|', oc.STORE_NUMBER, oc.FORM_TYPE_CODE, oc.POS_PREFIX, oc.WORK_ORDER_NUMBER), oc.ENTRY_TIMESTAMP
+            ORDER BY CONCAT_WS('|', oc.STORE_NUMBER, oc.FORM_TYPE_CODE, oc.POS_PREFIX, oc.WORK_ORDER_NUMBER,oc.ITEM_SEQ_NUMBER), oc.ENTRY_TIMESTAMP
         ) + max_key.max_sk AS WORK_ORDER_ITEM_DETAILS_SK,
 
         oc.STORE_NUMBER,
@@ -252,6 +255,8 @@ new_rows AS (
         oc.POS_PREFIX,
         oc.WORK_ORDER_NUMBER,
         oc.ITEM_SEQ_NUMBER,
+        oc.ORIGIN_TRANSACTION_SK,
+        oc.WORK_ORDER_HEADER_SK,
         oc.PRODUCT_SK,
         oc.MANUFACTURING_CODE,
         oc.QUANTITY,
@@ -312,7 +317,7 @@ new_rows AS (
         oc.LAST_MAINTAINED_WORKSTATION,
 
         -- Effective/Expiration date and current flag logic
-        oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
+         TRY_TO_DATE(oc.ORIGIN_TRANSACTION_SK::varchar(8),'YYYYMMDD') AS EFFECTIVE_DATE,
         CASE
             WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
             ELSE '9999-12-31 23:59:59'::TIMESTAMP_NTZ
@@ -351,6 +356,8 @@ expired_rows AS (
         old.POS_PREFIX,
         old.WORK_ORDER_NUMBER,
         old.ITEM_SEQ_NUMBER,
+        old.ORIGIN_TRANSACTION_SK,
+        old.WORK_ORDER_HEADER_SK,
         old.PRODUCT_SK,
         old.MANUFACTURING_CODE,
         old.QUANTITY,
@@ -439,6 +446,8 @@ soft_deletes AS (
         old.POS_PREFIX,
         old.WORK_ORDER_NUMBER,
         old.ITEM_SEQ_NUMBER,
+        old.ORIGIN_TRANSACTION_SK,
+        old.WORK_ORDER_HEADER_SK,
         old.PRODUCT_SK,
         old.MANUFACTURING_CODE,
         old.QUANTITY,
