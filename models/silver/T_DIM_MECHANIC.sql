@@ -33,9 +33,8 @@ WITH source_data AS (
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_MECHANICS_WOMECH') }}
     {% if is_incremental() %}
-        WHERE TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) > (
-            SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
-        )
+    WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
+        --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
     {% endif %}
 ),
 
@@ -103,7 +102,7 @@ new_rows AS (
         oc.MECHANIC_TYPE,
         oc.EMPLOYEE_STORE_NUMBER,
         oc.EMPLOYEE_ID,
-        CAST(NULL AS BIGINT) AS STORE_SK,
+        CAST(dim.STORE_SK AS number(20,0) ) AS STORE_SK,
         oc.LAST_MODIFIED_USER,
         oc.LAST_MODIFIED_DATE,
         oc.LAST_MODIFIED_TIME,
@@ -126,6 +125,9 @@ new_rows AS (
         CURRENT_DATE() AS INGESTION_DT
     FROM ordered_changes oc
     CROSS JOIN max_key
+    LEFT JOIN {{ ref('T_DIM_STORE') }} dim
+      ON dim.STORE_NUMBER = oc.STORE_ID
+     AND oc.ENTRY_TIMESTAMP BETWEEN dim.EFFECTIVE_DATE AND COALESCE(dim.EXPIRATION_DATE, '9999-12-31')
     WHERE NOT EXISTS (
         SELECT 1
         FROM {{ this }} tgt
