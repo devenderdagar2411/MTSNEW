@@ -24,5 +24,4 @@ sources:
       - name: t_brz_distribution_center_stdc
       - name: T_BRZ_CATEGORY_GROUP_CTGP
       - name: T_BRZ_TIRE_SIZE_BSOTRM
-
-
+      - name: T_BRZ_INV_CLASS_INCLAS
