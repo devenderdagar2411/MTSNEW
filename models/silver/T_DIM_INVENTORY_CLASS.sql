@@ -2,7 +2,7 @@
     materialized = 'incremental',
     unique_key = 'INVENTORY_CLASS_SK'
 ) }}
-
+ 
 WITH source_data AS (
     SELECT
         TRY_CAST(TRIM(C2CLCD) AS INTEGER) AS CLASS_ID,
@@ -29,42 +29,34 @@ WITH source_data AS (
             COALESCE(TRIM(C2WKSN), '')
         )) AS RECORD_CHECKSUM_HASH
     FROM RAW_DATA.BRONZE_SALES.T_BRZ_INV_CLASS_INCLAS
-<<<<<<< HEAD
-    {% if is_incremental() %}
-    WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
+     {% if is_incremental() %}   
+     WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
         --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
     {% endif %}
-=======
-    
-    WHERE TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) >= (
-        SELECT COALESCE(MAX(EFFECTIVE_DATE), TO_TIMESTAMP_NTZ('1900-01-01'))
-        FROM {{ this }}
-    )
->>>>>>> 133ce8690028152e7de42628b8c921fc73b4e45b
 ),
-
+ 
 ranked_source AS (
     SELECT *,
         ROW_NUMBER() OVER (PARTITION BY CLASS_ID ORDER BY ENTRY_TIMESTAMP DESC) AS rn
     FROM source_data
 ),
-
+ 
 deduplicated_source AS (
     SELECT * FROM ranked_source WHERE rn = 1
 ),
-
+ 
 changes AS (
     SELECT * FROM deduplicated_source WHERE OPERATION != 'DELETE'
 ),
-
+ 
 deletes AS (
     SELECT * FROM deduplicated_source WHERE OPERATION = 'DELETE'
 ),
-
+ 
 max_key AS (
     SELECT COALESCE(MAX(INVENTORY_CLASS_SK), 0) AS max_sk FROM {{ this }}
 ),
-
+ 
 changes_with_category AS (
     SELECT
         c.*,
@@ -73,14 +65,14 @@ changes_with_category AS (
     LEFT JOIN ANALYTICS.SILVER_SALES.T_DIM_INVENTORY_CATEGORY ic
       ON c.CATEGORY_CODE = ic.CATEGORY_ID
 ),
-
+ 
 ordered_changes AS (
     SELECT
         cwc.*,
         LEAD(ENTRY_TIMESTAMP) OVER (PARTITION BY CLASS_ID ORDER BY ENTRY_TIMESTAMP) AS next_entry_ts
     FROM changes_with_category cwc
 ),
-
+ 
 new_rows AS (
     SELECT
         CAST(ROW_NUMBER() OVER (ORDER BY oc.CLASS_ID, oc.ENTRY_TIMESTAMP) + max_key.max_sk AS NUMBER(38,0)) AS INVENTORY_CLASS_SK,
@@ -113,7 +105,7 @@ new_rows AS (
           AND tgt.IS_CURRENT_FLAG = TRUE
     )
 ),
-
+ 
 expired_rows AS (
     SELECT
         old.INVENTORY_CLASS_SK,
@@ -142,7 +134,7 @@ expired_rows AS (
      AND old.IS_CURRENT_FLAG = TRUE
      AND old.RECORD_CHECKSUM_HASH != new.RECORD_CHECKSUM_HASH
 ),
-
+ 
 soft_deleted_rows AS (
     SELECT
         old.INVENTORY_CLASS_SK,
@@ -170,7 +162,7 @@ soft_deleted_rows AS (
       ON old.CLASS_ID = del.CLASS_ID
      AND old.IS_CURRENT_FLAG = TRUE
 )
-
+ 
 SELECT * FROM expired_rows
 UNION ALL
 SELECT * FROM new_rows
