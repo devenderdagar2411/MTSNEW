@@ -29,11 +29,18 @@ WITH source_data AS (
             COALESCE(TRIM(C2WKSN), '')
         )) AS RECORD_CHECKSUM_HASH
     FROM RAW_DATA.BRONZE_SALES.T_BRZ_INV_CLASS_INCLAS
+<<<<<<< HEAD
+    {% if is_incremental() %}
+    WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
+        --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
+    {% endif %}
+=======
     
     WHERE TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) >= (
         SELECT COALESCE(MAX(EFFECTIVE_DATE), TO_TIMESTAMP_NTZ('1900-01-01'))
         FROM {{ this }}
     )
+>>>>>>> 133ce8690028152e7de42628b8c921fc73b4e45b
 ),
 
 ranked_source AS (
