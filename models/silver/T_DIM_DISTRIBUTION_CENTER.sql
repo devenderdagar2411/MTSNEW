@@ -1,23 +1,32 @@
 {{ config(
-    materialized = 'table',
+    materialized = 'incremental',
     schema = 'SILVER_SALES',
-    alias = 'T_DIM_DISTRIBUTION_CENTER'
+    alias = 'T_DIM_DISTRIBUTION_CENTER',
+    unique_key = 'DISTRIBUTION_CENTER_ID'
 ) }}
 
-with source_data as (
+with latest_loaded as (
+    {% if is_incremental() %}
+        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01'::timestamp) as max_loaded_ts
+        from {{ source('bronze_data', 't_brz_distribution_center_stdc') }}
+    {% else %}
+        select '1900-01-01'::timestamp as max_loaded_ts
+    {% endif %}
+),
+
+source_data as (
     select
         ENTRY_TIMESTAMP,
         SEQUENCE_NUMBER,
         OPERATION,
-        M5DC,                -- DISTRIBUTION_CENTER_ID (Data field)
-        M5STORE,             -- STORE_ID (Key field)
+        M5DC,                -- DISTRIBUTION_CENTER_ID
+        M5STORE,             -- STORE_ID
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
-        ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT
-    from RAW_DATA.BRONZE_SALES.T_BRZ_DISTRIBUTION_CENTER_STDC
+        ETL_VERSION
+    from {{ source('bronze_data', 't_brz_distribution_center_stdc') }}
+    where ENTRY_TIMESTAMP > (select max_loaded_ts from latest_loaded)
 ),
 
 ranked_data as (
@@ -32,33 +41,23 @@ ranked_data as (
 
 final_data as (
     select
-        M5DC,
-        M5STORE,
-        SOURCE_SYSTEM,
-        SOURCE_FILE_NAME,
-        BATCH_ID,
-        -- Generate checksum using ONLY data field (M5DC)
-        MD5(CONCAT_WS('|',
-            COALESCE(TRIM(M5DC), '')
-        )) AS RECORD_CHECKSUM_HASH,
-        ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT,
-        -- Generate surrogate key using key fields (M5DC + STORE_ID)
-        ABS(HASH(M5DC || '|' || COALESCE(TO_VARCHAR(M5STORE), ''))) as DISTRIBUTION_CENTER_KEY
+        -- Surrogate Key
+        cast(abs(hash(M5DC || '|' || coalesce(to_varchar(M5STORE), ''))) as bigint) as DISTRIBUTION_CENTER_KEY,
+
+        -- Business Keys
+        cast(M5DC as integer) as DISTRIBUTION_CENTER_ID,
+        cast(M5STORE as integer) as STORE_ID,
+
+        -- Audit Fields
+        cast(SOURCE_SYSTEM as varchar(100)) as SOURCE_SYSTEM,
+        cast(SOURCE_FILE_NAME as varchar(200)) as SOURCE_FILE_NAME,
+        cast(BATCH_ID as varchar(50)) as BATCH_ID,
+        md5(concat_ws('|', coalesce(trim(M5DC), ''))) as RECORD_CHECKSUM_HASH,
+        cast(ETL_VERSION as varchar(20)) as ETL_VERSION,
+        cast(current_timestamp as timestamp_ntz) as INGESTION_DTTM,
+        cast(current_date as date) as INGESTION_DT
     from ranked_data
     where rn = 1
 )
 
-select
-    CAST(DISTRIBUTION_CENTER_KEY AS BIGINT) as DISTRIBUTION_CENTER_KEY,          -- BIGINT(19), surrogate key
-    CAST(M5DC AS INTEGER) as DISTRIBUTION_CENTER_ID,                             -- INTEGER(10), not nullable
-    CAST(M5STORE AS INTEGER) as STORE_ID,                                        -- INTEGER(10), nullable
-    CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                        -- VARCHAR(100)
-    CAST(SOURCE_FILE_NAME AS VARCHAR(200)) as SOURCE_FILE_NAME,                 -- VARCHAR(200)
-    CAST(BATCH_ID AS VARCHAR(50)) as BATCH_ID,                                   -- VARCHAR(50)
-    CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,          -- VARCHAR(64)
-    CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                             -- VARCHAR(20)
-    CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                     -- TIMESTAMP_NTZ
-    CAST(INGESTION_DT AS DATE) as INGESTION_DT                                   -- DATE
-from final_data
+select * from final_data
