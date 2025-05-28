@@ -26,7 +26,7 @@ source_data as (
         BATCH_ID,
         ETL_VERSION
     from {{ source('bronze_data', 't_brz_distribution_center_stdc') }}
-    where ENTRY_TIMESTAMP > (select max_loaded_ts from latest_loaded)
+    where ENTRY_TIMESTAMP = (select max_loaded_ts from latest_loaded)
 ),
 
 ranked_data as (
