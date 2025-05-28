@@ -187,8 +187,8 @@ WITH source_data AS (
 source_with_keys AS (
     SELECT
         sd.*,
-        dt.DIM_DATE_KEY AS TRANSACTION_DATE_SK,
-        odt.DIM_DATE_KEY AS ORIGIN_TRANSACTION_SK,
+        dt.DATE_KEY AS TRANSACTION_DATE_SK,
+        odt.DATE_KEY AS ORIGIN_TRANSACTION_SK,
         sm.STORE_MANAGER_SK as STORE_MANAGER_SK,
         srst.STORE_SK AS SALES_REP_STORE_SK,
         sr.SALES_REP_SK,
