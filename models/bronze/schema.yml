@@ -21,6 +21,7 @@ sources:
       - name: T_BRZ_ITEM_ADD_ON_INITEMAO
       - name: T_BRZ_CUSTOMER_ACCOUNT_SACACH
       - name: t_brz_brand_inbrnd
+      - name: T_BRZ_INVENTORY_VENDOR_INVEND
       
 
 
