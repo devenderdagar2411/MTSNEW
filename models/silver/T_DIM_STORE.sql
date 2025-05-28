@@ -66,8 +66,8 @@ WITH source_data AS (
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_STORE_MASTER_STMAST') }}
     {% if is_incremental() %}
-        WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
-        
+    WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
+        --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
     {% endif %}
 ),
 

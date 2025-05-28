@@ -180,7 +180,8 @@ WITH source_data AS (
     FROM {{ source('bronze_data', 'T_BRZ_HEADER_WOMSTH') }}
     {% if is_incremental() %}
     WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
-        {% endif %}
+        --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
+    {% endif %}
 ),
 
 -- Step 2: Join with dimension tables to get surrogate keys

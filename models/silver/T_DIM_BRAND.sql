@@ -7,10 +7,10 @@
 
 with latest_loaded as (
     {% if is_incremental() %}
-        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01'::timestamp) as max_loaded_ts
+        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01T00:00:00Z') as max_loaded_ts
         from {{ source('bronze_data', 't_brz_brand_inbrnd') }}
     {% else %}
-        select '1900-01-01'::timestamp as max_loaded_ts
+        select '1900-01-01T00:00:00Z' as max_loaded_ts
     {% endif %}
 ),
 
@@ -30,7 +30,7 @@ source_data as (
         BATCH_ID,
         ETL_VERSION
     from {{ source('bronze_data', 't_brz_brand_inbrnd') }}
-    where ENTRY_TIMESTAMP > (select max_loaded_ts from latest_loaded)
+    where ENTRY_TIMESTAMP = (select max_loaded_ts from latest_loaded)
 ),
 
 ranked_data as (
