@@ -25,9 +25,13 @@ sources:
       - name: t_brz_distribution_center_stdc
       - name: T_BRZ_CATEGORY_GROUP_CTGP
       - name: T_BRZ_TIRE_SIZE_BSOTRM
+<<<<<<< HEAD
+      - name: T_BRZ_INV_CLASS_INCLAS
+=======
 
       - name: T_BRZ_INVENTORY_VENDOR_INVEND
       
 
 
 
+>>>>>>> ab36dece772ba1694d4c63e1472bdfd7c751cdd5
