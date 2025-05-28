@@ -27,11 +27,5 @@ sources:
       - name: T_BRZ_TIRE_SIZE_BSOTRM
 
       - name: T_BRZ_INV_CLASS_INCLAS
-
-
       - name: T_BRZ_INVENTORY_VENDOR_INVEND
       
-
-
-
->>>>>>> ab36dece772ba1694d4c63e1472bdfd7c751cdd5
