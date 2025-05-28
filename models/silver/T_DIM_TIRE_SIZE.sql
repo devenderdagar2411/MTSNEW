@@ -4,13 +4,14 @@
     alias = 'T_DIM_TIRE_SIZE'
 ) }}
 
+-- Step 1: Source Extraction
 with source_data as (
     select
         ENTRY_TIMESTAMP,
         SEQUENCE_NUMBER,
         OPERATION,
-        B9BSCD,         -- TIRE_SIZE_CODE (Key field)
-        B9NAME,         -- TIRE_SIZE_NAME (Data field)
+        B9BSCD,  -- TIRE_SIZE_CODE (Key field)
+        B9NAME,  -- TIRE_SIZE_NAME (Data field)
         B9USER,
         B9CYMD,
         B9HMS,
@@ -21,9 +22,10 @@ with source_data as (
         ETL_VERSION,
         INGESTION_DTTM,
         INGESTION_DT
-    from RAW_DATA.BRONZE_SALES.T_BRZ_TIRE_SIZE_BSOTRM
+    from  {{ source('bronze_data', 'T_BRZ_TIRE_SIZE_BSOTRM') }}
 ),
 
+-- Step 2: De-duplication (Keep latest record per TIRE_SIZE_CODE)
 ranked_data as (
     select *,
         row_number() over (
@@ -33,54 +35,55 @@ ranked_data as (
     from source_data
 ),
 
+-- Step 3: Business Logic + Derived Fields
 final_data as (
     select
         B9BSCD as TIRE_SIZE_CODE,
         B9NAME as TIRE_SIZE_NAME,
 
-        -- Derived: SECTION_WIDTH based on B9NAME
+        -- Derived: SECTION_WIDTH
         case 
-            when trim(upper(B9NAME)) = 'SMALL' then 165
-            when trim(upper(B9NAME)) = 'COMPACT' then 175
-            when trim(upper(B9NAME)) = 'LARGE' then 215
-            when trim(upper(B9NAME)) = 'GIANT' then 265
+            when upper(trim(B9NAME)) = 'SMALL' then 165
+            when upper(trim(B9NAME)) = 'COMPACT' then 175
+            when upper(trim(B9NAME)) = 'LARGE' then 215
+            when upper(trim(B9NAME)) = 'GIANT' then 265
             else null
         end as SECTION_WIDTH,
 
-        -- Derived: ASPECT_RATIO - fixed or inferred (customize as needed)
+        -- Derived: ASPECT_RATIO
         case 
-            when trim(upper(B9NAME)) in ('SMALL', 'COMPACT') then 65
-            when trim(upper(B9NAME)) = 'LARGE' then 60
-            when trim(upper(B9NAME)) = 'GIANT' then 55
+            when upper(trim(B9NAME)) in ('SMALL', 'COMPACT') then 65
+            when upper(trim(B9NAME)) = 'LARGE' then 60
+            when upper(trim(B9NAME)) = 'GIANT' then 55
             else null
         end as ASPECT_RATIO,
 
-        -- Derived: RIM_DIAMETER - fixed or inferred (customize as needed)
+        -- Derived: RIM_DIAMETER
         case 
-            when trim(upper(B9NAME)) = 'SMALL' then 15
-            when trim(upper(B9NAME)) = 'COMPACT' then 16
-            when trim(upper(B9NAME)) = 'LARGE' then 17
-            when trim(upper(B9NAME)) = 'GIANT' then 18
+            when upper(trim(B9NAME)) = 'SMALL' then 15
+            when upper(trim(B9NAME)) = 'COMPACT' then 16
+            when upper(trim(B9NAME)) = 'LARGE' then 17
+            when upper(trim(B9NAME)) = 'GIANT' then 18
             else null
         end as RIM_DIAMETER,
 
-        -- Derived: TIRE_TYPE - example logic
+        -- Derived: TIRE_TYPE
         case 
-            when trim(upper(B9NAME)) in ('SMALL', 'COMPACT') then 'P'
-            when trim(upper(B9NAME)) in ('LARGE', 'GIANT') then 'LT'
+            when upper(trim(B9NAME)) in ('SMALL', 'COMPACT') then 'P'
+            when upper(trim(B9NAME)) in ('LARGE', 'GIANT') then 'LT'
             else null
         end as TIRE_TYPE,
 
-        -- Derived: METRIC_FLAG - example logic
+        -- Derived: METRIC_FLAG
         case 
-            when trim(upper(B9NAME)) in ('SMALL', 'COMPACT', 'LARGE', 'GIANT') then true
+            when upper(trim(B9NAME)) in ('SMALL', 'COMPACT', 'LARGE', 'GIANT') then true
             else null
         end as METRIC_FLAG,
 
-        -- B9USER as LAST_MAINTAINED_USER,
-        -- B9CYMD as LAST_MAINTAINED_DATE,
-        -- B9HMS as LAST_MAINTAINED_TIME,
-        -- B9WKSN as LAST_MAINTAINED_WORKSTATION,
+        B9USER,
+        B9CYMD,
+        B9HMS,
+        B9WKSN,
 
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
@@ -90,31 +93,35 @@ final_data as (
         INGESTION_DTTM,
         INGESTION_DT,
 
-        -- Surrogate key
+        -- Surrogate Key
         ABS(HASH(B9BSCD)) as TIRE_SIZE_KEY
 
     from ranked_data
     where rn = 1
 )
 
+-- Step 4: Final Projection with Explicit Casting
 select
-    CAST(TIRE_SIZE_KEY AS BIGINT) as TIRE_SIZE_KEY,
-    CAST(TIRE_SIZE_CODE AS INTEGER) as TIRE_SIZE_CODE,
-    CAST(TIRE_SIZE_NAME AS VARCHAR(40)) as TIRE_SIZE_NAME,
-    CAST(SECTION_WIDTH AS INTEGER) as SECTION_WIDTH,
-    CAST(ASPECT_RATIO AS INTEGER) as ASPECT_RATIO,
-    CAST(RIM_DIAMETER AS INTEGER) as RIM_DIAMETER,
-    CAST(TIRE_TYPE AS VARCHAR(20)) as TIRE_TYPE,
-    CAST(METRIC_FLAG AS BOOLEAN) as METRIC_FLAG,
-    -- CAST(LAST_MAINTAINED_USER AS VARCHAR(10)) as LAST_MAINTAINED_USER,
-    -- CAST(LAST_MAINTAINED_DATE AS INTEGER) as LAST_MAINTAINED_DATE,
-    -- CAST(LAST_MAINTAINED_TIME AS INTEGER) as LAST_MAINTAINED_TIME,
-    -- CAST(LAST_MAINTAINED_WORKSTATION AS VARCHAR(10)) as LAST_MAINTAINED_WORKSTATION,
-    CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,
-    CAST(SOURCE_FILE_NAME AS VARCHAR(255)) as SOURCE_FILE_NAME,
-    CAST(BATCH_ID AS VARCHAR(100)) as BATCH_ID,
-    CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,
-    CAST(ETL_VERSION AS VARCHAR(50)) as ETL_VERSION,
-    CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,
-    CAST(INGESTION_DT AS DATE) as INGESTION_DT
+    cast(TIRE_SIZE_KEY as bigint) as TIRE_SIZE_KEY,
+    cast(TIRE_SIZE_CODE as integer) as TIRE_SIZE_CODE,
+    cast(TIRE_SIZE_NAME as varchar(40)) as TIRE_SIZE_NAME,
+    cast(SECTION_WIDTH as integer) as SECTION_WIDTH,
+    cast(ASPECT_RATIO as integer) as ASPECT_RATIO,
+    cast(RIM_DIAMETER as integer) as RIM_DIAMETER,
+    cast(TIRE_TYPE as varchar(20)) as TIRE_TYPE,
+    cast(METRIC_FLAG as boolean) as METRIC_FLAG,
+
+    -- Optional audit fields (commented out if unused)
+    cast(B9USER as varchar(10)) as LAST_MAINTAINED_USER,
+    cast(B9CYMD as integer) as LAST_MAINTAINED_DATE,
+    cast(B9HMS as integer) as LAST_MAINTAINED_TIME,
+    cast(B9WKSN as varchar(10)) as LAST_MAINTAINED_WORKSTATION,
+
+    cast(SOURCE_SYSTEM as varchar(100)) as SOURCE_SYSTEM,
+    cast(SOURCE_FILE_NAME as varchar(255)) as SOURCE_FILE_NAME,
+    cast(BATCH_ID as varchar(100)) as BATCH_ID,
+    cast(RECORD_CHECKSUM_HASH as varchar(64)) as RECORD_CHECKSUM_HASH,
+    cast(ETL_VERSION as varchar(50)) as ETL_VERSION,
+    cast(INGESTION_DTTM as timestamp_ntz) as INGESTION_DTTM,
+    cast(INGESTION_DT as date) as INGESTION_DT
 from final_data

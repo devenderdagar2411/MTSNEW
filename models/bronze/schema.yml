@@ -21,7 +21,13 @@ sources:
       - name: T_BRZ_ITEM_ADD_ON_INITEMAO
       - name: T_BRZ_CUSTOMER_ACCOUNT_SACACH
       - name: t_brz_brand_inbrnd
+
+      - name: t_brz_distribution_center_stdc
+      - name: T_BRZ_CATEGORY_GROUP_CTGP
+      - name: T_BRZ_TIRE_SIZE_BSOTRM
+
       - name: T_BRZ_INVENTORY_VENDOR_INVEND
       
+
 
 
