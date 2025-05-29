@@ -119,7 +119,7 @@ deletes AS (
 
     WHERE OPERATION = 'DELETE'
 
-)
+),
 
 MAX_KEY AS (
 
