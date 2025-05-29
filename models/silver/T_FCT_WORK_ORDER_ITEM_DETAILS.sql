@@ -157,7 +157,6 @@ source_with_keys AS (
             ORDER BY  sd.STORE_NUMBER,sd.FORM_TYPE_CODE,sd.POS_PREFIX ,sd.WORK_ORDER_NUMBER,sd.ITEM_SEQ_NUMBER
         ) AS WORK_ORDER_ITEM_DETAILS_SK,
         sd.*,
-        invv.INVENTORY_VENDOR_SK,
         dim.ORIGIN_TRANSACTION_SK as ORIGIN_TRANSACTION_SK,
         dim.WORK_ORDER_HEADER_SK as WORK_ORDER_HEADER_SK,
         dp.PRODUCT_SK AS DIM_PRODUCT_SK,
@@ -173,16 +172,10 @@ source_with_keys AS (
     LEFT JOIN  {{ source('silver_data', 'T_DIM_PRODUCT') }} dp
         ON sd.PRODUCT_SK = dp.PRODUCT_SK AND dp.IS_CURRENT_FLAG = TRUE
     LEFT JOIN {{ source('silver_data', 'T_DIM_MECHANIC') }} mech
-        ON sd.INVENTORY_CATEGORY_SK = mech.MECHANIC_SK AND mech.IS_CURRENT_FLAG = TRUE 
-    LEFT JOIN ANALYTICS.SILVER_SALES.T_DIM_INVENTORY_CATEGORY ic
-    ON c.CATEGORY_CODE = ic.CATEGORY_ID
-     LEFT JOIN {{ ref('T_DIM_INVENTORY_VENDOR') }} invv
-      ON dim.VENDOR_NUMBER = sd.VENDOR_NUMBER
-     AND sd.ENTRY_TIMESTAMP BETWEEN invv.EFFECTIVE_DATE AND COALESCE(invv.EXPIRATION_DATE, '9999-12-31')  
+        ON sd.INVENTORY_CATEGORY_SK = mech.MECHANIC_SK AND mech.IS_CURRENT_FLAG = TRUE    
     LEFT JOIN {{ source('silver_data', 'T_DIM_INVENTORY_CATEGORY') }} ic
         ON sd.INVENTORY_CATEGORY_SK = ic.INVENTORY_CATEGORY_SK AND ic.IS_CURRENT_FLAG = TRUE
         WHERE ic.INVENTORY_CATEGORY_SK IS NOT NULL
-    
 ),
 
 -- -- Final output
@@ -297,7 +290,6 @@ new_rows AS (
         oc.INVOICE_DATE,
         oc.RETURN_TO_STOCK_FLAG,
         oc.INVENTORY_CATEGORY_SK,
-        oc.INVENTORY_VENDOR_SK,
         oc.VEHICLE_SEQUENCE_NUMBER,
         oc.FEDERAL_TAX,
         oc.AVERAGE_COST,
@@ -315,7 +307,6 @@ new_rows AS (
         oc.EXTENDED_GP_AMT,
         oc.ADJ_CLAIM_NUMBER,
         oc.GROUP_DISCOUNT_ITEM_FLAG,
-        
 
         -- Effective/Expiration date and current flag logic
          TRY_TO_DATE(oc.ORIGIN_TRANSACTION_SK::varchar(8),'YYYYMMDD') AS EFFECTIVE_DATE,
@@ -396,7 +387,6 @@ expired_rows AS (
         old.INVOICE_DATE,
         old.RETURN_TO_STOCK_FLAG,
         old.INVENTORY_CATEGORY_SK,
-        old.INVENTORY_VENDOR_SK
         old.VEHICLE_SEQUENCE_NUMBER,
         old.FEDERAL_TAX,
         old.AVERAGE_COST,
@@ -415,7 +405,6 @@ expired_rows AS (
         old.ADJ_CLAIM_NUMBER,
         old.GROUP_DISCOUNT_ITEM_FLAG,
         
-
         old.EFFECTIVE_DATE,
         new.EFFECTIVE_DATE - INTERVAL '1 second' AS EXPIRATION_DATE,
         FALSE AS IS_CURRENT_FLAG,
@@ -484,7 +473,6 @@ soft_deletes AS (
         old.INVOICE_DATE,
         old.RETURN_TO_STOCK_FLAG,
         old.INVENTORY_CATEGORY_SK,
-        old.INVENTORY_VENDOR_SK,
         old.VEHICLE_SEQUENCE_NUMBER,
         old.FEDERAL_TAX,
         old.AVERAGE_COST,
@@ -502,8 +490,7 @@ soft_deletes AS (
         old.EXTENDED_GP_AMT,
         old.ADJ_CLAIM_NUMBER,
         old.GROUP_DISCOUNT_ITEM_FLAG,
-
-        old.EFFECTIVE_DATE,
+         old.EFFECTIVE_DATE,
         del.ENTRY_TIMESTAMP AS EXPIRATION_DATE,
         FALSE AS IS_CURRENT_FLAG,
 
