@@ -167,7 +167,7 @@ source_with_keys AS (
         mech.MECHANIC_SK as DIM_MECHANIC_SK,
         ic.INVENTORY_CATEGORY_SK AS DIM_INVENTORY_CATEGORY_SK
     FROM source_data sd
-    LEFT JOIN {{ ref('T_FCT_WORK_ORDER_HEADER') }} dim
+    INNER JOIN {{ ref('T_FCT_WORK_ORDER_HEADER') }} dim
       ON dim.STORE_NUMBER = sd.STORE_NUMBER
       and dim.FORM_TYPE_CODE = sd.FORM_TYPE_CODE
       and dim.POS_PREFIX = sd.POS_PREFIX    
