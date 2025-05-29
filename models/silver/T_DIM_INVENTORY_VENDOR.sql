@@ -1,6 +1,6 @@
 {{ config(
     materialized = 'incremental',
-    unique_key = ['VENDOR_SK']
+    unique_key = ['INVENTORY_VENDOR_SK']
 ) }}
 
 -- Step 1: Load new data from source
@@ -48,7 +48,7 @@ WITH source_data AS (
             COALESCE(TRIM(AWCRPL), ''),
             COALESCE(TRIM(AWNAVD), '')
         )) AS RECORD_CHECKSUM_HASH
-    FROM {{ source('bronze_data', 'T_BRZ_INVENTORY_VENDOR_INVEND') }}
+    FROM {{ source('bronze_data', 'T_BRZ_INV_VENDOR_INVEND') }}
     {% if is_incremental() %}
         WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
     {% endif %}
@@ -88,7 +88,7 @@ deletes AS (
 
 -- Step 4: Get max surrogate key
 max_key AS (
-    SELECT COALESCE(MAX(VENDOR_SK), 0) AS max_sk FROM {{ this }}
+    SELECT COALESCE(MAX(INVENTORY_VENDOR_SK), 0) AS max_sk FROM {{ this }}
 ),
 
 -- Step 5: Calculate expiration dates
@@ -105,7 +105,7 @@ new_rows AS (
     SELECT
         ROW_NUMBER() OVER (
             ORDER BY VENDOR_NUMBER, ENTRY_TIMESTAMP
-        ) + max_key.max_sk AS VENDOR_SK,
+        ) + max_key.max_sk AS INVENTORY_VENDOR_SK,
         oc.VENDOR_NUMBER,
         oc.VENDOR_NAME,
         oc.ADDRESS_LINE_1,
@@ -156,7 +156,7 @@ new_rows AS (
 -- Step 7: Expire old rows
 expired_rows AS (
     SELECT
-        old.VENDOR_SK,
+        old.INVENTORY_VENDOR_SK,
         old.VENDOR_NUMBER,
         old.VENDOR_NAME,
         old.ADDRESS_LINE_1,
@@ -196,7 +196,7 @@ expired_rows AS (
 -- Step 8: Soft deletes
 soft_deleted_rows AS (
     SELECT
-        old.VENDOR_SK,
+        old.INVENTORY_VENDOR_SK,
         old.VENDOR_NUMBER,
         old.VENDOR_NAME,
         old.ADDRESS_LINE_1,

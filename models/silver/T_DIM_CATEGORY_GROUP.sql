@@ -21,7 +21,7 @@ with source_data as (
     from {{ source('bronze_data', 'T_BRZ_CATEGORY_GROUP_CTGP') }}
 
     {% if is_incremental() %}
-    where INGESTION_DTTM > (
+    where ENTRY_TIMESTAMP = (
         select coalesce(max(INGESTION_DTTM), '1900-01-01') from {{ this }}
     )
     {% endif %}
@@ -31,7 +31,7 @@ ranked_data as (
     select
         *,
         row_number() over (
-            partition by M55GP
+            partition by M55CTCD
             order by ENTRY_TIMESTAMP desc, SEQUENCE_NUMBER desc
         ) as rn
     from source_data
@@ -41,8 +41,7 @@ final_data as (
     select
         *,
         MD5(CONCAT_WS('|',
-            COALESCE(TO_VARCHAR(M55GP), ''),
-            COALESCE(TO_VARCHAR(M55CTCD), '')
+            COALESCE(TO_VARCHAR(M55GP), '')
         )) AS RECORD_CHECKSUM_HASH,
         ABS(HASH(M55GP || '|' || M55CTCD)) as CATEGORY_GROUP_KEY
     from ranked_data
