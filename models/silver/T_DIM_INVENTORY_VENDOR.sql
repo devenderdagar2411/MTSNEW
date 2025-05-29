@@ -48,7 +48,7 @@ WITH source_data AS (
             COALESCE(TRIM(AWCRPL), ''),
             COALESCE(TRIM(AWNAVD), '')
         )) AS RECORD_CHECKSUM_HASH
-    FROM {{ source('bronze_data', 'T_BRZ_INVENTORY_VENDOR_INVEND') }}
+    FROM {{ source('bronze_data', 'T_BRZ_INV_VENDOR_INVEND') }}
     {% if is_incremental() %}
         WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
     {% endif %}
