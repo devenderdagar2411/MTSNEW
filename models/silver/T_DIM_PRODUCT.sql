@@ -112,6 +112,15 @@ CHANGES AS (
 
 ),
 
+deletes AS (
+
+    SELECT *
+    FROM deduplicated_source
+
+    WHERE OPERATION = 'DELETE'
+
+)
+
 MAX_KEY AS (
 
     SELECT COALESCE(MAX(PRODUCT_SK), 0) AS MAX_SK FROM {{ this }}
@@ -135,7 +144,7 @@ JOINED_CHANGES AS (
         DCAT.INVENTORY_CATEGORY_SK 
     FROM ORDERED_CHANGES OC
     LEFT JOIN {{ ref('T_DIM_INVENTORY_CLASS') }} DC
-      ON OC.CLASS_CODE = DC.CATEGORY_CODE
+      ON OC.CATEGORY_CODE = DC.CATEGORY_CODE
     LEFT JOIN {{ ref('T_DIM_INVENTORY_CATEGORY') }} DCAT
       ON OC.CATEGORY_CODE = DCAT.CATEGORY_ID
     LEFT JOIN {{ ref('T_DIM_INVENTORY_VENDOR') }} dim
@@ -296,13 +305,84 @@ SOFT_DELETED_ROWS AS (
 
 ),
 
+soft_delete as (
+    SELECT
+        old.PRODUCT_SK,
+        old.ITEM_NUMBER,
+        old.ITEM_DESCRIPTION,
+        old.CLASS_CODE,
+        old.PRODUCT_CODE,
+        old.SIZE,
+        old.PRODUCT_SIZE,
+        old.PLY,
+        old.MANUFACTURER_CODE,
+        old.TAX_CODE,
+        old.WEIGHT,
+        old.FEDERAL_TAX,
+        old.BASE_COST,
+        old.NET_BILL_COST,
+        old.UNIT_COST,
+        old.AVERAGE_COST,
+        old.FREIGHT_COST,
+        old.CASING_COST,
+        old.MISC_COST_01,
+        old.MISC_COST_02,
+        old.MISC_COST_03,
+        old.MISC_COST_04,
+        old.MISC_COST_05,
+        old.MISC_COST_06,
+        old.MISC_COST_07,
+        old.MISC_COST_08,
+        old.MISC_COST_09,
+        old.MISC_COST_10,
+        old.INVENTORY_VENDOR_NUMBER,
+        old.GP_CODE,
+        old.PC_SWITCH,
+        old.SUB_CODE,
+        old.LAST_PRICE_CHANGE_DATE,
+        old.SPIFF_CODE,
+        old.EFFECTS_QOH_FLAG,
+        old.ALPHA_SEARCH_SIZE,
+        old.NUMERIC_SEARCH_SIZE,
+        old.CATEGORY_CODE,
+        old.PRICE_1,
+        old.PRICE_2,
+        old.DISCONTINUED_ITEM_FLAG,
+        old.CONSIGNMENT_ITEM_FLAG,
+        old.COST_REQUIRED_AT_POS_FLAG,
+        old.DO_NOT_AVERAGE_COST_FLAG,
+        old.ROAD_HAZARD_ITEM_FLAG,
+        old.RETREAD_STOCK_FLAG,
+        old.STATE_TIRE_FEE_EXEMPT_FLAG,
+        old.REVENUE_STREAM_CODE,
+        old.REVENUE_STREAM_NAME,
+        old.INVENTORY_CLASS_SK,
+        old.INVENTORY_CATEGORY_SK,
+        old.INVENTORY_VENDOR_SK,
+       old.EFFECTIVE_DATE,
+        del.ENTRY_TIMESTAMP AS EXPIRATION_DATE,
+        FALSE AS IS_CURRENT_FLAG,
+        old.SOURCE_SYSTEM,
+        old.SOURCE_FILE_NAME,
+        old.BATCH_ID,
+        old.RECORD_CHECKSUM_HASH,
+        old.ETL_VERSION,
+        old.INGESTION_DTTM,
+        old.INGESTION_DT
+        from {{this}} old
+        join deletes del
+         ON old.ITEM_NUMBER = del.ITEM_NUMBER
+         AND old.IS_CURRENT_FLAG = TRUE
+),
+
 FINAL_RESULT AS (
 
     SELECT * FROM EXPIRED_ROWS
     UNION ALL
     SELECT * FROM NEW_ROWS
     UNION ALL
-    SELECT * FROM SOFT_DELETED_ROWS
+    -- SELECT * FROM SOFT_DELETED_ROWS
+    SELECT * FROM soft_delete
 
 )
 
