@@ -33,7 +33,7 @@ ranked_data as (
     select
         *,
         row_number() over (
-            partition by M5DC
+            partition by M5STORE
             order by ENTRY_TIMESTAMP desc, SEQUENCE_NUMBER desc
         ) as rn
     from source_data
