@@ -45,7 +45,7 @@ with source_data as (
     FROM {{ source('bronze_data', 'T_BRZ_ITEM_ADD_ON_INITEMAO') }}
 
     {% if is_incremental() %}
-    WHERE INGESTION_DTTM > (
+    WHERE ENTRY_TIMESTAMP = (
         SELECT COALESCE(MAX(INGESTION_DTTM), '1900-01-01') FROM {{ this }}
     )
     {% endif %}
@@ -135,6 +135,6 @@ select
     BATCH_ID,
     RECORD_CHECKSUM_HASH,
     ETL_VERSION,
-    INGESTION_DTTM,
-    INGESTION_DT
+     CURRENT_TIMESTAMP() AS INGESTION_DTTM,
+    CURRENT_DATE() AS INGESTION_DT
 from final_data
