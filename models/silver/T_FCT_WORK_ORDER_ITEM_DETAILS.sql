@@ -171,7 +171,7 @@ source_with_keys AS (
       and dim.WORK_ORDER_NUMBER = sd.WORK_ORDER_NUMBER
      AND dim.IS_CURRENT_FLAG = TRUE
     LEFT JOIN  {{ source('silver_data', 'T_DIM_PRODUCT') }} dp
-        ON sd.PRODUCT_SK = dp.PRODUCT_NUMBER AND dp.IS_CURRENT_FLAG = TRUE
+        ON sd.PRODUCT_SK = dp.ITEM_NUMBER AND dp.IS_CURRENT_FLAG = TRUE
     LEFT JOIN {{ source('silver_data', 'T_DIM_MECHANIC') }} mech
         ON sd.MECHANIC_SK = mech.MECHANIC_ID AND mech.IS_CURRENT_FLAG = TRUE 
     --      LEFT JOIN {{ ref('T_DIM_INVENTORY_VENDOR') }} invv
