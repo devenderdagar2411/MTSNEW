@@ -24,7 +24,9 @@ source_data as (
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
-        ETL_VERSION
+        ETL_VERSION,
+         INGESTION_DTTM,
+        INGESTION_DT
     from {{ source('bronze_data', 't_brz_distribution_center_stdc') }}
     where ENTRY_TIMESTAMP = (select max_loaded_ts from latest_loaded)
 ),
@@ -41,23 +43,31 @@ ranked_data as (
 
 final_data as (
     select
-        -- Surrogate Key
-        cast(abs(hash(M5DC || '|' || coalesce(to_varchar(M5STORE), ''))) as bigint) as DISTRIBUTION_CENTER_KEY,
-
-        -- Business Keys
-        cast(M5DC as integer) as DISTRIBUTION_CENTER_ID,
-        cast(M5STORE as integer) as STORE_ID,
-
-        -- Audit Fields
-        cast(SOURCE_SYSTEM as varchar(100)) as SOURCE_SYSTEM,
-        cast(SOURCE_FILE_NAME as varchar(200)) as SOURCE_FILE_NAME,
-        cast(BATCH_ID as varchar(50)) as BATCH_ID,
+      
+        M5DC,
+        M5STORE,
+        SOURCE_SYSTEM,
+        SOURCE_FILE_NAME,
+        BATCH_ID,
         md5(concat_ws('|', coalesce(trim(M5DC), ''))) as RECORD_CHECKSUM_HASH,
-        cast(ETL_VERSION as varchar(20)) as ETL_VERSION,
-        cast(current_timestamp as timestamp_ntz) as INGESTION_DTTM,
-        cast(current_date as date) as INGESTION_DT
+        ETL_VERSION,
+        INGESTION_DTTM,
+        INGESTION_DT,
+        abs(hash(M5DC || '|' || M5STORE)) as DISTRIBUTION_CENTER_KEY
     from ranked_data
     where rn = 1
 )
 
-select * from final_data
+
+select
+    CAST(DISTRIBUTION_CENTER_KEY AS NUMBER(20)) as DISTRIBUTION_CENTER_KEY,     
+    CAST(M5DC AS NUMBER(3)) as DISTRIBUTION_CENTER_ID,                                   
+    CAST(M5STORE AS number(38,0)) as STORE_ID,                              
+    CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                   
+    CAST(SOURCE_FILE_NAME AS VARCHAR(200)) as SOURCE_FILE_NAME,             
+    CAST(BATCH_ID AS VARCHAR(50)) as BATCH_ID,                               
+    CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,      
+    CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                        
+    CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                  
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT                           
+from final_data

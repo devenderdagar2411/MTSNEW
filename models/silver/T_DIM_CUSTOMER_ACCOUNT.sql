@@ -20,7 +20,9 @@ with source_data as (
         SOURCE_FILE_NAME,
         BATCH_ID,
         RECORD_CHECKSUM_HASH,
-        ETL_VERSION
+        ETL_VERSION,
+        INGESTION_DTTM,
+        INGESTION_DT
     from {{ source('bronze_data', 'T_BRZ_CUSTOMER_ACCOUNT_SACACH') }}
     -- {% if is_incremental() %}
     --     -- Only pull records newer than the latest already loaded
@@ -40,38 +42,34 @@ ranked_data as (
 
 final_data as (
     select
-        -- ACCOUNT_TYPE_KEY (BIGINT → hashed surrogate key)
-        cast(abs(hash(BYACTY)) as bigint) as ACCOUNT_TYPE_KEY,
-
-        -- ACCOUNT_TYPE (INTEGER)
-        cast(BYACTY as integer) as ACCOUNT_TYPE,
-
-        -- ACCOUNT_TYPE_NAME (VARCHAR(40))
-        cast(BYNAME as varchar(40)) as ACCOUNT_TYPE_NAME,
-
-        -- LAST_MAINTAINED_USER (VARCHAR(50))
-        cast(BYUSER as varchar(50)) as LAST_MAINTAINED_USER,
-
-        -- LAST_MODIFIED_DATE (DATE), assuming BYCYMD is in format YYYYMMDD
-        try_to_date(to_varchar(BYCYMD), 'YYYYMMDD') as LAST_MODIFIED_DATE,
-
-        -- LAST_MAINTAINED_TIME (NUMBER(38,0))
-        cast(BYHMS as number(38,0)) as LAST_MAINTAINED_TIME,
-
-        -- LAST_MAINTAINED_WORKSTATION (VARCHAR(20))
-        cast(BYWKSN as varchar(20)) as LAST_MAINTAINED_WORKSTATION,
-
-        -- Audit Fields
-        cast(SOURCE_SYSTEM as varchar(100)) as SOURCE_SYSTEM,
-        cast(SOURCE_FILE_NAME as varchar(200)) as SOURCE_FILE_NAME,
-        cast(BATCH_ID as varchar(50)) as BATCH_ID,
-        cast(RECORD_CHECKSUM_HASH as varchar(64)) as RECORD_CHECKSUM_HASH,
-        cast(ETL_VERSION as varchar(20)) as ETL_VERSION,
-        cast(current_timestamp as timestamp_ntz) as INGESTION_DTTM,
-        cast(current_date as date) as INGESTION_DT
+        BYACTY,
+        BYNAME,
+        BYUSER,
+        BYCYMD,
+        BYHMS,
+        BYWKSN,
+        SOURCE_SYSTEM,
+        SOURCE_FILE_NAME,
+        BATCH_ID,
+        md5(concat_ws('|', coalesce(trim(BYNAME), ''))) as RECORD_CHECKSUM_HASH,
+        ETL_VERSION,
+        INGESTION_DTTM,
+        INGESTION_DT,
+        abs(hash(BYACTY || '|' || BYNAME)) as ACCOUNT_TYPE_KEY
 
     from ranked_data
     where rn = 1
 )
 
-select * from final_data
+select
+    CAST(ACCOUNT_TYPE_KEY AS NUMBER(20)) as ACCOUNT_TYPE_KEY,     
+    CAST(BYACTY AS NUMBER(3)) as ACCOUNT_TYPE,                                   
+    CAST(BYNAME AS VARCHAR(100)) as ACCOUNT_TYPE_NAME,
+    CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                   
+    CAST(SOURCE_FILE_NAME AS VARCHAR(200)) as SOURCE_FILE_NAME,             
+    CAST(BATCH_ID AS VARCHAR(50)) as BATCH_ID,                               
+    CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,      
+    CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                        
+    CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                  
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT                           
+from final_data

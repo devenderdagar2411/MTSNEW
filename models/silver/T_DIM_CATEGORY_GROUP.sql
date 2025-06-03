@@ -32,7 +32,7 @@ ranked_data as (
         *,
         row_number() over (
             partition by M55CTCD
-            order by ENTRY_TIMESTAMP desc, SEQUENCE_NUMBER desc
+            order by ENTRY_TIMESTAMP desc
         ) as rn
     from source_data
 ),
@@ -41,7 +41,7 @@ final_data as (
     select
         *,
         MD5(CONCAT_WS('|',
-            COALESCE(TO_VARCHAR(M55GP), '')
+            COALESCE(TO_VARCHAR(M55CTCD), '')
         )) AS RECORD_CHECKSUM_HASH,
         ABS(HASH(M55GP || '|' || M55CTCD)) as CATEGORY_GROUP_KEY
     from ranked_data
@@ -49,14 +49,14 @@ final_data as (
 )
 
 select
-    CAST(CATEGORY_GROUP_KEY AS NUMBER(20,0)) AS CATEGORY_GROUP_KEY,
-    M55GP          AS GROUP_ID,
-    M55CTCD        AS CATEGORY_ID,
-    SOURCE_SYSTEM,
-    SOURCE_FILE_NAME,
-    BATCH_ID,
-    RECORD_CHECKSUM_HASH,
-    ETL_VERSION,
-    INGESTION_DTTM,
-    INGESTION_DT
+    CAST(CATEGORY_GROUP_KEY AS NUMBER(20)) as CATEGORY_GROUP_KEY,     
+    CAST(M55GP AS NUMBER(3)) as GROUP_ID,                                   
+    CAST(M55CTCD AS NUMBER(3)) as CATEGORY_ID,                              
+    CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                   
+    CAST(SOURCE_FILE_NAME AS VARCHAR(200)) as SOURCE_FILE_NAME,             
+    CAST(BATCH_ID AS VARCHAR(50)) as BATCH_ID,                               
+    CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,      
+    CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                        
+    CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                  
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT  
 from final_data
