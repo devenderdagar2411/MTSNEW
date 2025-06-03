@@ -88,13 +88,13 @@ final_data as (
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
-        MD5(TO_VARCHAR(B9BSCD) || '|' || COALESCE(B9NAME, '')) as RECORD_CHECKSUM_HASH,
+        MD5(TO_VARCHAR(B9BSCD) || '|' || COALESCE(B9NAME, ''))  as RECORD_CHECKSUM_HASH,
         ETL_VERSION,
         INGESTION_DTTM,
         INGESTION_DT,
 
         -- Surrogate Key
-        ABS(HASH(B9BSCD)) as TIRE_SIZE_KEY
+        ABS(HASH(B9BSCD || '|' || B9NAME)) as TIRE_SIZE_KEY
 
     from ranked_data
     where rn = 1
@@ -102,20 +102,14 @@ final_data as (
 
 -- Step 4: Final Projection with Explicit Casting
 select
-    cast(TIRE_SIZE_KEY as bigint) as TIRE_SIZE_KEY,
-    cast(TIRE_SIZE_CODE as integer) as TIRE_SIZE_CODE,
+    cast(TIRE_SIZE_KEY as number(20)) as TIRE_SIZE_KEY,
+    cast(TIRE_SIZE_CODE as number(3,0)) as TIRE_SIZE_CODE,
     cast(TIRE_SIZE_NAME as varchar(40)) as TIRE_SIZE_NAME,
-    cast(SECTION_WIDTH as integer) as SECTION_WIDTH,
-    cast(ASPECT_RATIO as integer) as ASPECT_RATIO,
-    cast(RIM_DIAMETER as integer) as RIM_DIAMETER,
+    cast(SECTION_WIDTH as number(38,0)) as SECTION_WIDTH,
+    cast(ASPECT_RATIO as number(38,0)) as ASPECT_RATIO,
+    cast(RIM_DIAMETER as number(38,0)) as RIM_DIAMETER,
     cast(TIRE_TYPE as varchar(20)) as TIRE_TYPE,
     cast(METRIC_FLAG as boolean) as METRIC_FLAG,
-
-    -- Optional audit fields (commented out if unused)
-    cast(B9USER as varchar(10)) as LAST_MAINTAINED_USER,
-    cast(B9CYMD as integer) as LAST_MAINTAINED_DATE,
-    cast(B9HMS as integer) as LAST_MAINTAINED_TIME,
-    cast(B9WKSN as varchar(10)) as LAST_MAINTAINED_WORKSTATION,
 
     cast(SOURCE_SYSTEM as varchar(100)) as SOURCE_SYSTEM,
     cast(SOURCE_FILE_NAME as varchar(255)) as SOURCE_FILE_NAME,

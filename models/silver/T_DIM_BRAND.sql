@@ -16,19 +16,17 @@ with latest_loaded as (
 
 source_data as (
     select
-        ENTRY_TIMESTAMP,
+         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP,
         SEQUENCE_NUMBER,
-        OPERATION,
-        B99BSCD,               -- BRAND_ID
-        B99NAME,               -- BRAND_NAME
-        B99USER,               -- LAST_MODIFIED_USER
-        B99CYMD,               -- LAST_MODIFIED_DATE
-        B99HMS,                -- LAST_MODIFIED_TIME
-        B99WKSN,               -- WORKSTATION_ID
-        SOURCE_SYSTEM,
-        SOURCE_FILE_NAME,
-        BATCH_ID,
-        ETL_VERSION
+       CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
+       CAST(TRIM(B99BSCD) AS NUMBER(3,0)) AS BRAND_ID,  
+        CAST(TRIM(B99NAME) AS VARCHAR(100)) AS BRAND_NAME,
+        CAST(TRIM(SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
+        CAST(TRIM(SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
+        CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
+        CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
+        INGESTION_DTTM,
+        INGESTION_DT
     from {{ source('bronze_data', 't_brz_brand_inbrnd') }}
     where ENTRY_TIMESTAMP = (select max_loaded_ts from latest_loaded)
 ),
@@ -37,33 +35,38 @@ ranked_data as (
     select
         *,
         row_number() over (
-            partition by B99BSCD 
-            order by ENTRY_TIMESTAMP desc, SEQUENCE_NUMBER desc
+            partition by BRAND_ID 
+            order by ENTRY_TIMESTAMP desc
         ) as rn
     from source_data
 ),
 
 final_data as (
     select
-        -- BRAND_KEY (BIGINT → hashed surrogate key)
-        cast(abs(hash(B99BSCD)) as bigint) as BRAND_KEY,
-
-        -- BRAND_ID (INTEGER(10))
-        cast(B99BSCD as integer) as BRAND_ID,
-
-        -- BRAND_NAME (VARCHAR(100))
-        cast(B99NAME as varchar(100)) as BRAND_NAME,
-
-        -- Audit Fields
-        cast(SOURCE_SYSTEM as varchar(100)) as SOURCE_SYSTEM,
-        cast(SOURCE_FILE_NAME as varchar(200)) as SOURCE_FILE_NAME,
-        cast(BATCH_ID as varchar(50)) as BATCH_ID,
-        md5(concat_ws('|', coalesce(trim(B99BSCD), ''))) as RECORD_CHECKSUM_HASH,
-        cast(ETL_VERSION as varchar(20)) as ETL_VERSION,
-        cast(current_timestamp as timestamp_ntz) as INGESTION_DTTM,
-        cast(current_date as date) as INGESTION_DT
+    
+       BRAND_ID,
+       BRAND_NAME,
+       SOURCE_SYSTEM,
+        SOURCE_FILE_NAME,
+       BATCH_ID,
+        md5(concat_ws('|', coalesce(trim(BRAND_NAME), ''))) as RECORD_CHECKSUM_HASH,
+      ETL_VERSION,
+        INGESTION_DTTM,
+        INGESTION_DT,
+        abs(hash(BRAND_ID || '|' || BRAND_NAME)) as BRAND_KEY
     from ranked_data
     where rn = 1
 )
 
-select * from final_data
+select
+    CAST(BRAND_KEY AS NUMBER(20)) as BRAND_KEY,     
+    CAST(BRAND_ID AS NUMBER(3)) as BRAND_ID,                                   
+    CAST(BRAND_NAME AS VARCHAR(100)) as BRAND_NAME,                              
+    CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                   
+    CAST(SOURCE_FILE_NAME AS VARCHAR(200)) as SOURCE_FILE_NAME,             
+    CAST(BATCH_ID AS VARCHAR(50)) as BATCH_ID,                               
+    CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,      
+    CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                        
+    CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                  
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT                           
+from final_data
