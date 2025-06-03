@@ -157,7 +157,7 @@ new_rows AS (
         oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
         CASE
             WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
-            ELSE NULL
+            ELSE '9999-12-31 23:59:59'::TIMESTAMP_NTZ
         END AS EXPIRATION_DATE,
         CASE
             WHEN oc.next_entry_ts IS NOT NULL THEN FALSE

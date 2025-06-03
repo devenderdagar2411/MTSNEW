@@ -297,14 +297,6 @@ EXPIRED_ROWS AS (
 
 ),
 
-SOFT_DELETED_ROWS AS (
-
-    SELECT * FROM  {{ this }}
-    WHERE ITEM_NUMBER NOT IN (SELECT ITEM_NUMBER FROM NEW_ROWS)
-      AND IS_CURRENT_FLAG = TRUE
-
-),
-
 soft_delete as (
     SELECT
         old.PRODUCT_SK,
