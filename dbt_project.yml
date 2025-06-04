@@ -65,6 +65,6 @@ vars:
   silver_database: "{{ env_var('DBT_SILVER_DATABASE', 'ANALYTICS') }}"
   silver_schema: "{{ env_var('DBT_SILVER_SCHEMA', 'SILVER_SALES') }}"
   gold_database: "{{ env_var('DBT_GOLD_DATABASE', 'REPORTING') }}"
-  gold_schema: "{{ env_var('DBT_GOLD_SCHEMA', 'GOLD_SALES') }}"
+  gold_schema: "{{ env_var('DBT_GOLD_SCHEMA', 'GOLD_SALES') }"
 
     
