@@ -1,6 +1,7 @@
 {{ config(
-    materialized = 'incremental',
-    schema = 'SILVER_SALES',
+    materialized='incremental',
+    database=var('silver_database'),
+    schema=var('silver_schema'),
     alias = 'T_DIM_BRAND',
     unique_key = 'BRAND_ID'
 ) }}
