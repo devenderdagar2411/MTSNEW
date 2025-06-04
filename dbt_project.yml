@@ -39,17 +39,23 @@ models:
   mts:
     # Bronze layer - raw data from source systems
     bronze:
-      +materialized: table      
+      +materialized: table  
+      +schema: var('bronze_schema')
+      +database: var('bronze_database') 
       +tags: ["bronze", "raw"]
     
     # Silver layer - cleaned and transformed data
     silver:
       +materialized: incremental
+      +schema: var('silver_schema')
+      +database: var('silver_database')
       +tags: ["silver", "transformed"]
     
     # Gold layer - business-ready aggregated data
     gold:
       +materialized: view
+      +schema: var('gold_schema')
+      +database: var('gold_database')      
       +tags: ["gold", "business"]
 
 vars:
