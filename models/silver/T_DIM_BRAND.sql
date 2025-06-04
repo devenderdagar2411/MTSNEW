@@ -1,7 +1,7 @@
 {{ config(
     materialized='incremental',
-    database=var('dbt_silver_database'),
-    schema=var('dbt_silver_schema'),
+    database=var('silver_database'),
+    schema=var('silver_schema'),
     alias = 'T_DIM_BRAND',
     unique_key = 'BRAND_ID'
 ) }}

@@ -39,32 +39,25 @@ models:
   mts:
     # Bronze layer - raw data from source systems
     bronze:
-      +materialized: table
-      +schema: "{{ var('bronze_schema') }}"
-      +database: "{{ var('bronze_database') }}"
+      +materialized: table      
       +tags: ["bronze", "raw"]
     
     # Silver layer - cleaned and transformed data
     silver:
       +materialized: incremental
-      +schema: "{{ var('silver_schema') }}"
-      +database: "{{ var('silver_database') }}"
       +tags: ["silver", "transformed"]
     
     # Gold layer - business-ready aggregated data
     gold:
       +materialized: view
-      +schema: "{{ var('gold_schema') }}"
-      +database: "{{ var('gold_database') }}"
       +tags: ["gold", "business"]
 
 vars:
-  # Environment-specific variables
-  bronze_database: "{{ env_var('DBT_BRONZE_DATABASE', 'RAW_DATA') }}"
-  bronze_schema: "{{ env_var('DBT_BRONZE_SCHEMA', 'BRONZE_SALES') }}"
-  silver_database: "{{ env_var('DBT_SILVER_DATABASE', 'ANALYTICS') }}"
-  silver_schema: "{{ env_var('DBT_SILVER_SCHEMA', 'SILVER_SALES') }}"
-  gold_database: "{{ env_var('DBT_GOLD_DATABASE', 'REPORTING') }}"
-  gold_schema: "{{ env_var('DBT_GOLD_SCHEMA', 'GOLD_SALES') }}"
+  bronze_database: "{{ env_var('DBT_BRONZE_DATABASE') }}"
+  bronze_schema: "{{ env_var('DBT_BRONZE_SCHEMA') }}"
+  silver_database: "{{ env_var('DBT_SILVER_DATABASE') }}"
+  silver_schema: "{{ env_var('DBT_SILVER_SCHEMA') }}"
+  gold_database: "{{ env_var('DBT_GOLD_DATABASE') }}"
+  gold_schema: "{{ env_var('DBT_GOLD_SCHEMA') }}"
 
     
