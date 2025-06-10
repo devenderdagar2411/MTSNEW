@@ -33,7 +33,7 @@ WITH source_data AS (
             COALESCE(TRIM(src.M3PAY), ''),
             COALESCE(TRIM(src.M3MGR), ''),
             COALESCE(TRIM(src.M3MFGROM), ''),
-            COALESCE(dim.STORE_SK), '')
+            COALESCE(CAST(dim.STORE_SK AS VARCHAR), '')
         )) AS RECORD_CHECKSUM_HASH,
         TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_STOREMANAGER_STMGRS') }} src
