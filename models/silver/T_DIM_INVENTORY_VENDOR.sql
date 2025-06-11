@@ -147,7 +147,6 @@ new_rows AS (
         SELECT 1
         FROM {{ this }} tgt
         WHERE tgt.VENDOR_NUMBER = oc.VENDOR_NUMBER
-          AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
           AND tgt.IS_CURRENT_FLAG = TRUE
     )

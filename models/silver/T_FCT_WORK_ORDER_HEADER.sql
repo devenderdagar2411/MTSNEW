@@ -404,7 +404,6 @@ new_rows AS (
          FROM {{ source('silver_data','T_FCT_WORK_ORDER_HEADER') }} tgt
         WHERE CONCAT_WS('|', tgt.STORE_NUMBER, tgt.FORM_TYPE_CODE, tgt.POS_PREFIX, tgt.WORK_ORDER_NUMBER) = 
               CONCAT_WS('|', oc.STORE_NUMBER, oc.FORM_TYPE_CODE, oc.POS_PREFIX, oc.WORK_ORDER_NUMBER)
-          AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
           AND tgt.IS_CURRENT_FLAG = TRUE
     )

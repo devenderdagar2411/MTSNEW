@@ -133,7 +133,6 @@ new_rows AS (
         FROM {{ this }} tgt
         WHERE tgt.STORE_ID = oc.STORE_ID
           AND tgt.MECHANIC_ID = oc.MECHANIC_ID
-          AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
           AND tgt.IS_CURRENT_FLAG = TRUE
     )
