@@ -35,13 +35,37 @@ clean-targets:         # directories to be removed by `dbt clean`
 # continue to be built as views. These settings can be overridden in the individual model files
 # using the `{{ config(...) }}` macro.
 
+
+
+vars:
+  bronze_database: "{{ env_var('DBT_BRONZE_DATABASE') }}"
+  bronze_schema: "{{ env_var('DBT_BRONZE_SCHEMA') }}"
+  silver_database: "{{ env_var('DBT_SILVER_DATABASE') }}"
+  silver_schema: "{{ env_var('DBT_SILVER_SCHEMA') }}"
+  gold_database: "{{ env_var('DBT_GOLD_DATABASE') }}"
+  gold_schema: "{{ env_var('DBT_GOLD_SCHEMA') }}"
+
 models:
   mts:
+    # Bronze layer - raw data from source systems
     bronze:
-      +materialized: table
+      +materialized: table  
+      +schema: "{{ env_var('DBT_BRONZE_SCHEMA') }}"
+      +database: "{{ env_var('DBT_BRONZE_DATABASE') }}"
+      +tags: ["bronze", "raw"]
+    
+    # Silver layer - cleaned and transformed data
     silver:
-      +schema: SILVER_SALES
-      +database: ANALYTICS          # target database
       +materialized: incremental
+      +schema: "{{ env_var('DBT_SILVER_SCHEMA') }}"
+      +database: "{{ env_var('DBT_SILVER_DATABASE') }}"
+      +tags: ["silver", "transformed"]
+    
+    # Gold layer - business-ready aggregated data
+    gold:
+      +materialized: view
+      +schema: "{{ env_var('DBT_GOLD_SCHEMA') }}"
+      +database: "{{ env_var('DBT_GOLD_DATABASE') }}"     
+      +tags: ["gold", "business"]
 
     

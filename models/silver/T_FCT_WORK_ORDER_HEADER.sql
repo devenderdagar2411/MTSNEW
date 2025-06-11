@@ -96,15 +96,34 @@ WITH source_data AS (
         CAST(TRIM(W1WOO) AS NUMERIC(10, 0)) AS ORIGIN_INVOICED_WORK_ORDER_NUMBER,
         CAST(TRIM(W1CPAT) AS VARCHAR(10)) AS CORP_AUTH_ASKED_FLAG,
 
+        -- Surrogate keys from joins
+        dt.DATE_KEY AS TRANSACTION_DATE_SK,
+        odt.DATE_KEY AS ORIGIN_TRANSACTION_SK,
+        sm.STORE_MANAGER_SK as STORE_MANAGER_SK,
+        srst.STORE_SK AS SALES_REP_STORE_SK,
+        sr.SALES_REP_SK,
+        c.CUSTOMER_SK,
+        -- Additional surrogate keys for form types
+        ft.FORM_TYPE_SK AS ORIGIN_FORM_TYPE_SK,
+        ift.FORM_TYPE_SK AS ORIGIN_INVOICED_FORM_TYPE_SK,
+        -- Additional surrogate keys for stores
+        orst.STORE_SK AS ORIGIN_SALES_REP_STORE_SK,
+        crst.STORE_SK AS CREDITED_SALES_REP_STORE_SK,
+        ist.STORE_SK AS ORIGIN_INVOICED_STORE_SK,
+        -- Additional surrogate keys for sales reps
+        orsr.SALES_REP_SK AS ORIGIN_SALES_REP_SK,
+        crsr.SALES_REP_SK AS CREDITED_SALES_REP_SK,
+
         -- Audit columns
-        CAST(TRIM(SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
-        CAST(TRIM(SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
-        CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
-        CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
-        CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
+        CAST(TRIM(base.SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
+    CAST(TRIM(base.SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
+    CAST(TRIM(base.BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
+    CAST(TRIM(base.ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
+    CAST(TRIM(base.OPERATION) AS VARCHAR(10)) AS OPERATION,
         
-        -- Create a tracking hash for change detection
+        -- Create a tracking hash for change detection including all source fields AND joined surrogate keys
         MD5(CONCAT_WS('|',
+            -- Original source fields
             COALESCE(TRIM(W1TRDT), ''),
             COALESCE(TRIM(W1OTDT), ''),
             COALESCE(TRIM(W1PRDT), ''),
@@ -136,7 +155,7 @@ WITH source_data AS (
             COALESCE(TRIM(W1SAD2), ''),
             COALESCE(TRIM(W1SAD3), ''),
             COALESCE(TRIM(W1SCTY), ''),
-            COALESCE(TRIM(W1SSTa), ''),
+            COALESCE(TRIM(W1SSTA), ''),
             COALESCE(TRIM(W1SZIP), ''),
             COALESCE(TRIM(W1OFMT), ''),
             COALESCE(TRIM(W1OSRS), ''),
@@ -173,75 +192,66 @@ WITH source_data AS (
             COALESCE(TRIM(W1FMTPO), ''),
             COALESCE(TRIM(W1WIPXO), ''),
             COALESCE(TRIM(W1WOO), ''),
-            COALESCE(TRIM(W1CPAT), '')
+            COALESCE(TRIM(W1CPAT), ''),
+            -- Surrogate keys from dimension joins
+            COALESCE(CAST(dt.DATE_KEY AS VARCHAR), ''),
+            COALESCE(CAST(odt.DATE_KEY AS VARCHAR), ''),
+            COALESCE(CAST(sm.STORE_MANAGER_SK AS VARCHAR), ''),
+            COALESCE(CAST(srst.STORE_SK AS VARCHAR), ''),
+            COALESCE(CAST(sr.SALES_REP_SK AS VARCHAR), ''),
+            COALESCE(CAST(c.CUSTOMER_SK AS VARCHAR), ''),
+            COALESCE(CAST(ft.FORM_TYPE_SK AS VARCHAR), ''),
+            COALESCE(CAST(ift.FORM_TYPE_SK AS VARCHAR), ''),
+            COALESCE(CAST(orst.STORE_SK AS VARCHAR), ''),
+            COALESCE(CAST(crst.STORE_SK AS VARCHAR), ''),
+            COALESCE(CAST(ist.STORE_SK AS VARCHAR), ''),
+            COALESCE(CAST(orsr.SALES_REP_SK AS VARCHAR), ''),
+            COALESCE(CAST(crsr.SALES_REP_SK AS VARCHAR), '')
         )) AS RECORD_CHECKSUM_HASH,
         
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
-    FROM {{ source('bronze_data', 'T_BRZ_HEADER_WOMSTH') }}
+    FROM {{ source('bronze_data', 'T_BRZ_HEADER_WOMSTH') }} base
+    -- Date dimension lookups
+    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} dt ON dt.DATE_KEY = CAST(TRIM(base.W1TRDT) AS VARCHAR(8))
+    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} odt ON odt.DATE_KEY = CAST(TRIM(base.W1OTDT) AS VARCHAR(8))
+
+    --StoreManager dimension lookup
+    LEFT JOIN {{ ref('T_DIM_STORE_MANAGER') }} sm ON sm.STORE_NUMBER = CAST(TRIM(base.W1SRST) AS NUMBER(3, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN sm.EFFECTIVE_DATE AND COALESCE(sm.EXPIRATION_DATE, '9999-12-31')
+    
+    -- Store dimension lookups
+    LEFT JOIN {{ ref('T_DIM_STORE') }} srst ON srst.STORE_NUMBER = CAST(TRIM(base.W1SRST) AS NUMBER(3, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN srst.EFFECTIVE_DATE AND COALESCE(srst.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_STORE') }} orst ON orst.STORE_NUMBER = CAST(TRIM(base.W1OSRS) AS NUMBER(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN orst.EFFECTIVE_DATE AND COALESCE(orst.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_STORE') }} crst ON crst.STORE_NUMBER = CAST(TRIM(base.W1ARST) AS NUMERIC(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN crst.EFFECTIVE_DATE AND COALESCE(crst.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_STORE') }} ist ON ist.STORE_NUMBER = CAST(TRIM(base.W1STOREO) AS NUMERIC(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN ist.EFFECTIVE_DATE AND COALESCE(ist.EXPIRATION_DATE, '9999-12-31')
+    
+    -- Sales rep dimension lookups
+    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} sr ON sr.SALES_REP_NUMBER = CAST(TRIM(base.W1SLRP) AS NUMBER(10, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN sr.EFFECTIVE_DATE AND COALESCE(sr.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} orsr ON orsr.SALES_REP_NUMBER = CAST(TRIM(base.W1OSLR) AS NUMBER(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN orsr.EFFECTIVE_DATE AND COALESCE(orsr.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} crsr ON crsr.SALES_REP_NUMBER = CAST(TRIM(base.W1ARRP) AS NUMERIC(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN crsr.EFFECTIVE_DATE AND COALESCE(crsr.EXPIRATION_DATE, '9999-12-31')
+    
+    -- Form type dimension lookups
+    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ft ON ft.FORM_TYPE_CODE = CAST(TRIM(base.W1OFMT) AS VARCHAR(10)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN ft.EFFECTIVE_DATE AND COALESCE(ft.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ift ON ift.FORM_TYPE_CODE = CAST(TRIM(base.W1FMTPO) AS VARCHAR(10)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN ift.EFFECTIVE_DATE AND COALESCE(ift.EXPIRATION_DATE, '9999-12-31')
+    
+    -- Customer dimension lookup
+    LEFT JOIN {{ ref('T_DIM_CUSTOMER') }} c ON c.CUSTOMER_ID = CAST(TRIM(base.W1CST) AS NUMBER(10, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN c.EFFECTIVE_DATE AND COALESCE(c.EXPIRATION_DATE, '9999-12-31')
+    
     {% if is_incremental() %}
-    WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
+    WHERE base.ENTRY_TIMESTAMP = '1900-01-01T00:00:00Z'
         --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
     {% endif %}
 ),
 
--- Step 2: Join with dimension tables to get surrogate keys
-source_with_keys AS (
-    SELECT
-        sd.*,
-        dt.DATE_KEY AS TRANSACTION_DATE_SK,
-        odt.DATE_KEY AS ORIGIN_TRANSACTION_SK,
-        sm.STORE_MANAGER_SK as STORE_MANAGER_SK,
-        srst.STORE_SK AS SALES_REP_STORE_SK,
-        sr.SALES_REP_SK,
-        c.CUSTOMER_SK,
-        -- Additional surrogate keys for form types
-        ft.FORM_TYPE_SK AS ORIGIN_FORM_TYPE_SK,
-        ift.FORM_TYPE_SK AS ORIGIN_INVOICED_FORM_TYPE_SK,
-        -- Additional surrogate keys for stores
-        orst.STORE_SK AS ORIGIN_SALES_REP_STORE_SK,
-        crst.STORE_SK AS CREDITED_SALES_REP_STORE_SK,
-        ist.STORE_SK AS ORIGIN_INVOICED_STORE_SK,
-        -- Additional surrogate keys for sales reps
-        orsr.SALES_REP_SK AS ORIGIN_SALES_REP_SK,
-        crsr.SALES_REP_SK AS CREDITED_SALES_REP_SK
-    FROM source_data sd
-    -- Date dimension lookups
-    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} dt ON dt.DATE_KEY = sd.TRANSACTION_DATE 
-    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} odt ON odt.DATE_KEY = sd.ORIGIN_TRANSACTION_DATE
-
-    --StoreManager dimension lookup
-
-    LEFT JOIN {{ ref('T_DIM_STORE_MANAGER') }} sm ON sm.STORE_NUMBER = sd.SALES_REP_STORE_NUMBER AND sm.IS_CURRENT_FLAG = TRUE
-
-    
-    -- Store dimension lookups
-    LEFT JOIN {{ ref('T_DIM_STORE') }} srst ON srst.STORE_NUMBER = sd.SALES_REP_STORE_NUMBER AND srst.IS_CURRENT_FLAG = TRUE
-    LEFT JOIN {{ ref('T_DIM_STORE') }} orst ON orst.STORE_NUMBER = sd.ORIGIN_SALES_REP_STORE_NUMBER AND orst.IS_CURRENT_FLAG = TRUE
-    LEFT JOIN {{ ref('T_DIM_STORE') }} crst ON crst.STORE_NUMBER = sd.CREDITED_SALES_REP_STORE_NUMBER AND crst.IS_CURRENT_FLAG = TRUE
-    LEFT JOIN {{ ref('T_DIM_STORE') }} ist ON ist.STORE_NUMBER = sd.ORIGIN_INVOICED_STORE_NUMBER AND ist.IS_CURRENT_FLAG = TRUE
-    
-    -- Sales rep dimension lookups
-    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} sr ON sr.SALES_REP_NUMBER = sd.SALES_REP_NUMBER AND sr.IS_CURRENT_FLAG = TRUE
-    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} orsr ON orsr.SALES_REP_NUMBER = sd.ORIGIN_SALES_REP_NUMBER AND orsr.IS_CURRENT_FLAG = TRUE
-    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} crsr ON crsr.SALES_REP_NUMBER = sd.CREDITED_SALES_REP_NUMBER AND crsr.IS_CURRENT_FLAG = TRUE
-    
-    -- Form type dimension lookups
-    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ft ON ft.FORM_TYPE_CODE = sd.ORIGIN_FORM_TYPE_CODE AND ft.IS_CURRENT_FLAG = TRUE
-    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ift ON ift.FORM_TYPE_CODE = sd.ORIGIN_INVOICED_FORM_TYPE_CODE AND ift.IS_CURRENT_FLAG = TRUE
-    
-    -- Customer dimension lookup
-    LEFT JOIN {{ ref('T_DIM_CUSTOMER') }} c ON c.CUSTOMER_ID = sd.CUSTOMER_NUMBER AND c.IS_CURRENT_FLAG = TRUE
-),
-
+-- Step 2: Remove the source_with_keys CTE since joins are now in source_data
 -- Step 3: Rank records by business key to handle duplicates
 ranked_source AS (
     SELECT 
-        swk.*,
+        sd.*,
         ROW_NUMBER() OVER (
-            PARTITION BY CONCAT_WS('|', swk.STORE_NUMBER, swk.FORM_TYPE_CODE, swk.POS_PREFIX, swk.WORK_ORDER_NUMBER)
-            ORDER BY swk.ENTRY_TIMESTAMP DESC
+            PARTITION BY CONCAT_WS('|', sd.STORE_NUMBER, sd.FORM_TYPE_CODE, sd.POS_PREFIX, sd.WORK_ORDER_NUMBER)
+            ORDER BY sd.ENTRY_TIMESTAMP DESC
         ) AS rn
-    FROM source_with_keys swk
+    FROM source_data sd
 ),
 
 -- Step 4: Remove duplicates by taking the latest record for each business key
@@ -335,7 +345,7 @@ new_rows AS (
         oc.SHIP_CITY,
         oc.SHIP_STATE,
         oc.SHIP_ZIP,
-         CAST(oc.ORIGIN_FORM_TYPE_SK AS NUMBER(20,0)) AS ORIGIN_FORM_TYPE_SK,
+        CAST(oc.ORIGIN_FORM_TYPE_SK AS NUMBER(20,0)) AS ORIGIN_FORM_TYPE_SK,
         oc.ORIGIN_SALES_REP_STORE_SK,
         oc.ORIGIN_SALES_REP_SK,
         oc.WORK_ORDER_STATUS,
@@ -401,7 +411,6 @@ new_rows AS (
 ),
 
 -- Step 11: Identify records to expire (current records that have changed)
--- In the expired_rows CTE, add the missing ORIGIN_INVOICED_STORE_SK column
 expired_rows AS (
     SELECT
         old.WORK_ORDER_HEADER_SK,
