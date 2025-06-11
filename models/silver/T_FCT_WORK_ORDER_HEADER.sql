@@ -401,7 +401,7 @@ new_rows AS (
     CROSS JOIN max_key
     WHERE NOT EXISTS (
         SELECT 1
-         FROM {{ source('silver_data','T_FCT_WORK_ORDER_HEADER') }}
+         FROM {{ source('silver_data','T_FCT_WORK_ORDER_HEADER') }} tgt
         WHERE CONCAT_WS('|', tgt.STORE_NUMBER, tgt.FORM_TYPE_CODE, tgt.POS_PREFIX, tgt.WORK_ORDER_NUMBER) = 
               CONCAT_WS('|', oc.STORE_NUMBER, oc.FORM_TYPE_CODE, oc.POS_PREFIX, oc.WORK_ORDER_NUMBER)
           AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
