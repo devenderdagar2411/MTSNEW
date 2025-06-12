@@ -93,8 +93,7 @@ new_rows AS (
     WHERE NOT EXISTS (
         SELECT 1 FROM {{ this }} tgt
         WHERE tgt.CLASS_ID = oc.CLASS_ID
-          AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
-          AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
+         AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
           AND tgt.IS_CURRENT_FLAG = TRUE
     )
 ),
