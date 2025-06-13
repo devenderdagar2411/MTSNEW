@@ -231,7 +231,7 @@ NEW_ROWS AS (
         FROM {{ this }} tgt
         WHERE tgt.ITEM_NUMBER = oc.ITEM_NUMBER
         AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
-        AND tgt.IS_CURRENT_FLAG = TRUE
+        AND tgt.IS_CURRENT_FLAG = TRUE)
 
 ),
 
