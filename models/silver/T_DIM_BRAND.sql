@@ -52,15 +52,13 @@ final_data as (
        BATCH_ID,
         md5(concat_ws('|', coalesce(trim(BRAND_NAME), ''))) as RECORD_CHECKSUM_HASH,
       ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT,
-        abs(hash(BRAND_ID || '|' || BRAND_NAME)) as BRAND_KEY
+         CURRENT_TIMESTAMP() AS INGESTION_DTTM,
+        CURRENT_DATE() AS INGESTION_DT
     from ranked_data
     where rn = 1
 )
 
 select
-    CAST(BRAND_KEY AS NUMBER(20)) as BRAND_KEY,     
     CAST(BRAND_ID AS NUMBER(3)) as BRAND_ID,                                   
     CAST(BRAND_NAME AS VARCHAR(100)) as BRAND_NAME,                              
     CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                   
