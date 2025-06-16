@@ -13,9 +13,7 @@ with source_data as (
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
-        ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT
+        ETL_VERSION
     from {{ source('bronze_data', 'T_BRZ_LABOR_ITEMS_INITLB') }}
 ),
 
@@ -37,15 +35,13 @@ final_data as (
         BATCH_ID,
         MD5(COALESCE(TRIM(Z9ITM), '')) as RECORD_CHECKSUM_HASH,
         ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT,
-        ABS(HASH(CAST(Z9ITM AS STRING))) as ITEM_ID_KEY
+        CURRENT_TIMESTAMP() AS INGESTION_DTTM,
+        CURRENT_DATE() AS INGESTION_DT
     from ranked_data
     where rn = 1
 )
 
 select
-    CAST(ITEM_ID_KEY AS NUMBER(20,0)) as ITEM_ID_KEY,
     CAST(Z9ITM AS NUMBER(10,0)) as ITEM_ID,
     CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,
     CAST(SOURCE_FILE_NAME AS VARCHAR(200)) as SOURCE_FILE_NAME,

@@ -1,30 +1,42 @@
 {{ config(
-    materialized = 'table',
-    schema = 'SILVER_SALES',
-    alias = 'T_DIM_CATEGORY_GROUP_NAME'
+    materialized='incremental',
+    database=var('silver_database'),
+    schema=var('silver_schema'),
+    alias='T_DIM_CATEGORY_GROUP_NAME',
+    unique_key='GROUP_ID'
 ) }}
 
-with source_data as (
+with latest_loaded as (
+    {% if is_incremental() %}
+        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01T00:00:00Z') as max_loaded_ts
+        from {{ source('bronze_data', 'T_BRZ_CATEGORY_GRP_NAME_CTGPNM') }}
+    {% else %}
+        select '1900-01-01T00:00:00Z' as max_loaded_ts
+    {% endif %}
+),
+
+source_data as (
     select
-        ENTRY_TIMESTAMP,
+        TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP,
         SEQUENCE_NUMBER,
-        OPERATION,
-        N55GP,               -- GROUP_ID (Key field)
-        N55NAME,             -- GROUP_NAME (Data field)
-        SOURCE_SYSTEM,
-        SOURCE_FILE_NAME,
-        BATCH_ID,
-        ETL_VERSION,
+        CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
+        CAST(TRIM(N55GP) AS NUMBER(5,0)) AS GROUP_ID,
+        CAST(TRIM(N55NAME) AS VARCHAR(40)) AS GROUP_NAME,
+        CAST(TRIM(SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
+        CAST(TRIM(SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
+        CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
+        CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
         INGESTION_DTTM,
         INGESTION_DT
     FROM {{ source('bronze_data', 'T_BRZ_CATEGORY_GRP_NAME_CTGPNM') }}
+    where ENTRY_TIMESTAMP = (select max_loaded_ts from latest_loaded)
 ),
 
 ranked_data as (
     select
         *,
         row_number() over (
-            partition by N55GP
+            partition by GROUP_ID
             order by ENTRY_TIMESTAMP desc
         ) as rn
     from source_data
@@ -32,33 +44,30 @@ ranked_data as (
 
 final_data as (
     select
-        N55GP,
-        N55NAME,
+        GROUP_ID,
+        GROUP_NAME,
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
         -- Generate checksum using key + data fields with MD5
         MD5(CONCAT_WS('|',
-            COALESCE(TRIM(N55NAME), '')
+            COALESCE(TRIM(GROUP_NAME), '')
         )) AS RECORD_CHECKSUM_HASH,
         ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT,
-        -- Generate surrogate key using HASH (ensure positive BIGINT)
-        ABS(HASH(N55GP || '|' || N55NAME)) as CATEGORY_GROUP_NAME_KEY
+        CURRENT_TIMESTAMP() AS INGESTION_DTTM,
+        CURRENT_DATE() AS INGESTION_DT
     from ranked_data
     where rn = 1
 )
 
 select
-    CAST(CATEGORY_GROUP_NAME_KEY AS NUMBER(20)) as CATEGORY_GROUP_NAME_KEY,                 -- BIGINT(19)
-    CAST(N55GP AS NUMBER(5)) as GROUP_ID,                                       -- INTEGER(10)
-    CAST(N55NAME AS VARCHAR(40)) as GROUP_NAME,                                  -- INTEGER(10)
-    CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                     -- VARCHAR(100)
-    CAST(SOURCE_FILE_NAME AS VARCHAR(200)) as SOURCE_FILE_NAME,              -- VARCHAR(200)
-    CAST(BATCH_ID AS VARCHAR(50)) as BATCH_ID,                                -- VARCHAR(50)
-    CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,       -- VARCHAR(64)
-    CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                          -- VARCHAR(20)
-    CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                  -- TIMESTAMP_NTZ
-    CAST(INGESTION_DT AS DATE) as INGESTION_DT                                -- DATE
+    CAST(GROUP_ID AS NUMBER(5)) as GROUP_ID,                                     -- NUMBER(5)
+    CAST(GROUP_NAME AS VARCHAR(40)) as GROUP_NAME,                               -- VARCHAR(40)
+    CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                        -- VARCHAR(100)
+    CAST(SOURCE_FILE_NAME AS VARCHAR(200)) as SOURCE_FILE_NAME,                  -- VARCHAR(200)
+    CAST(BATCH_ID AS VARCHAR(50)) as BATCH_ID,                                   -- VARCHAR(50)
+    CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,          -- VARCHAR(64)
+    CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                            -- VARCHAR(20)
+    CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                    -- TIMESTAMP_NTZ
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT                                   -- DATE
 from final_data
