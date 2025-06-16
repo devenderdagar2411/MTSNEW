@@ -15,9 +15,7 @@ with source_data as (
         CAST(TRIM(SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
         CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
         CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
-        CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
-        INGESTION_DTTM,
-        INGESTION_DT
+        CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION
     from {{ source('bronze_data', 'T_BRZ_CATEGORY_GROUP_CTGP') }}
 
     {% if is_incremental() %}
@@ -43,13 +41,14 @@ final_data as (
         MD5(CONCAT_WS('|',
             COALESCE(TO_VARCHAR(M55CTCD), '')
         )) AS RECORD_CHECKSUM_HASH,
-        ABS(HASH(M55GP || '|' || M55CTCD)) as CATEGORY_GROUP_KEY
+        CURRENT_TIMESTAMP() AS INGESTION_DTTM,
+        CURRENT_DATE() AS INGESTION_DT
     from ranked_data
     where rn = 1
 )
 
 select
-    CAST(CATEGORY_GROUP_KEY AS NUMBER(20)) as CATEGORY_GROUP_KEY,     
+        
     CAST(M55GP AS NUMBER(3)) as GROUP_ID,                                   
     CAST(M55CTCD AS NUMBER(3)) as CATEGORY_ID,                              
     CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                   

@@ -91,10 +91,7 @@ final_data as (
         MD5(TO_VARCHAR(B9BSCD) || '|' || COALESCE(B9NAME, ''))  as RECORD_CHECKSUM_HASH,
         ETL_VERSION,
         INGESTION_DTTM,
-        INGESTION_DT,
-
-        -- Surrogate Key
-        ABS(HASH(B9BSCD || '|' || B9NAME)) as TIRE_SIZE_KEY
+        INGESTION_DT
 
     from ranked_data
     where rn = 1

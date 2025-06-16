@@ -20,9 +20,7 @@ with source_data as (
         SOURCE_FILE_NAME,
         BATCH_ID,
         RECORD_CHECKSUM_HASH,
-        ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT
+        ETL_VERSION
     from {{ source('bronze_data', 'T_BRZ_CUSTOMER_ACCOUNT_SACACH') }}
     -- {% if is_incremental() %}
     --     -- Only pull records newer than the latest already loaded
@@ -53,16 +51,15 @@ final_data as (
         BATCH_ID,
         md5(concat_ws('|', coalesce(trim(BYNAME), ''))) as RECORD_CHECKSUM_HASH,
         ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT,
-        abs(hash(BYACTY || '|' || BYNAME)) as ACCOUNT_TYPE_KEY
+        CURRENT_TIMESTAMP() AS INGESTION_DTTM,
+        CURRENT_DATE() AS INGESTION_DT
 
     from ranked_data
     where rn = 1
 )
 
 select
-    CAST(ACCOUNT_TYPE_KEY AS NUMBER(20)) as ACCOUNT_TYPE_KEY,     
+        
     CAST(BYACTY AS NUMBER(3)) as ACCOUNT_TYPE,                                   
     CAST(BYNAME AS VARCHAR(100)) as ACCOUNT_TYPE_NAME,
     CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                   
