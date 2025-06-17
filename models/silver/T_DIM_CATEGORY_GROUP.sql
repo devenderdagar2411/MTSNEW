@@ -2,7 +2,7 @@
     materialized = 'incremental',
     schema = 'SILVER_SALES',
     alias = 'T_DIM_CATEGORY_GROUP',
-    unique_key = 'CATEGORY_GROUP_KEY'
+    unique_key = 'CATEGORY_ID'
 ) }}
 
 with source_data as (
