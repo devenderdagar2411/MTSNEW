@@ -2,7 +2,7 @@
     materialized = 'incremental',
     schema = 'SILVER_SALES',
     alias = 'T_DIM_DISTRIBUTION_CENTER',
-    unique_key = 'DISTRIBUTION_CENTER_ID'
+    unique_key = 'STORE_ID'
 ) }}
 
 with latest_loaded as (
