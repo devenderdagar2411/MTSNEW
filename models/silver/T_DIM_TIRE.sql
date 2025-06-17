@@ -52,9 +52,8 @@ WITH source_data AS (
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_TIRE_MASTER_ITCLVT') }}
     {% if is_incremental() %}
-       WHERE ENTRY_TIMESTAMP > (
-            SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
-        )
+    WHERE base.ENTRY_TIMESTAMP = '1900-01-01T00:00:00Z'
+        --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
     {% endif %}
 ),
 
