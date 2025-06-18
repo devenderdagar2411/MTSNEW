@@ -93,14 +93,12 @@ final_data as (
             COALESCE(TO_VARCHAR(I00NU13), ''),
             COALESCE(TO_VARCHAR(I00NU14), ''),
             COALESCE(TO_VARCHAR(I00NU15), '')
-        )) AS RECORD_CHECKSUM_HASH,
-        ABS(HASH("I00ITM#" || '|' || I00NAMP)) as ITEM_NUMBER_KEY
+        )) AS RECORD_CHECKSUM_HASH
     from ranked_data
     where rn = 1
 )
 
 select
-    CAST(ITEM_NUMBER_KEY AS NUMBER(20,0)) AS ITEM_NUMBER_KEY,
     "I00ITM#"        AS ITEM_NUMBER,
     I00LADT          AS LAST_ACTIVITY,
     I00BSCD          AS BS_OTR_CLASS,
@@ -135,6 +133,6 @@ select
     BATCH_ID,
     RECORD_CHECKSUM_HASH,
     ETL_VERSION,
-     CURRENT_TIMESTAMP() AS INGESTION_DTTM,
+    CURRENT_TIMESTAMP() AS INGESTION_DTTM,
     CURRENT_DATE() AS INGESTION_DT
 from final_data

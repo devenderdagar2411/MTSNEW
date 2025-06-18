@@ -50,11 +50,10 @@ WITH source_data AS (
             )
         ) AS RECORD_CHECKSUM_HASH,
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
-    FROM {{ source('bronze_data', 'T_BRZ_TIRE_MASTER_ITCLVT') }}
+    FROM {{ source('bronze_data', 'T_BRZ_TIRE_MASTER_ITCLVT') }} base
     {% if is_incremental() %}
-       WHERE ENTRY_TIMESTAMP > (
-            SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }}
-        )
+    WHERE base.ENTRY_TIMESTAMP = '1900-01-01T00:00:00Z'
+        --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
     {% endif %}
 ),
 
@@ -148,7 +147,6 @@ new_rows AS (
         SELECT 1
         FROM {{ this }} tgt
         WHERE tgt.VENDOR_TIER_CODE = oc.VENDOR_TIER_CODE
-          AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
           AND tgt.IS_CURRENT_FLAG = TRUE
     )

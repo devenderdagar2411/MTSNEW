@@ -401,10 +401,9 @@ new_rows AS (
     CROSS JOIN max_key
     WHERE NOT EXISTS (
         SELECT 1
-        FROM ANALYTICS.SILVER_SALES.T_FCT_WORK_ORDER_HEADER tgt
+          FROM {{ this }} tgt
         WHERE CONCAT_WS('|', tgt.STORE_NUMBER, tgt.FORM_TYPE_CODE, tgt.POS_PREFIX, tgt.WORK_ORDER_NUMBER) = 
               CONCAT_WS('|', oc.STORE_NUMBER, oc.FORM_TYPE_CODE, oc.POS_PREFIX, oc.WORK_ORDER_NUMBER)
-          AND tgt.EFFECTIVE_DATE = oc.ENTRY_TIMESTAMP
           AND tgt.RECORD_CHECKSUM_HASH = oc.RECORD_CHECKSUM_HASH
           AND tgt.IS_CURRENT_FLAG = TRUE
     )
@@ -498,7 +497,7 @@ expired_rows AS (
         old.ETL_VERSION,
         old.INGESTION_DTTM,
         old.INGESTION_DT
-    FROM ANALYTICS.SILVER_SALES.T_FCT_WORK_ORDER_HEADER old
+     FROM {{ this }} old
     JOIN new_rows new
       ON CONCAT_WS('|', old.STORE_NUMBER, old.FORM_TYPE_CODE, old.POS_PREFIX, old.WORK_ORDER_NUMBER) = 
          CONCAT_WS('|', new.STORE_NUMBER, new.FORM_TYPE_CODE, new.POS_PREFIX, new.WORK_ORDER_NUMBER)
@@ -593,7 +592,7 @@ soft_deletes AS (
         old.ETL_VERSION,
         old.INGESTION_DTTM,
         old.INGESTION_DT
-    FROM ANALYTICS.SILVER_SALES.T_FCT_WORK_ORDER_HEADER old
+     FROM {{ this }} old
     JOIN deletes del
       ON CONCAT_WS('|', old.STORE_NUMBER, old.FORM_TYPE_CODE, old.POS_PREFIX, old.WORK_ORDER_NUMBER) = 
          CONCAT_WS('|', del.STORE_NUMBER, del.FORM_TYPE_CODE, del.POS_PREFIX, del.WORK_ORDER_NUMBER)

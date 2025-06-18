@@ -2,7 +2,7 @@
     materialized = 'incremental',
     schema = 'SILVER_SALES',
     alias = 'T_DIM_DISTRIBUTION_CENTER',
-    unique_key = 'DISTRIBUTION_CENTER_ID'
+    unique_key = 'STORE_ID'
 ) }}
 
 with latest_loaded as (
@@ -24,9 +24,7 @@ source_data as (
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
-        ETL_VERSION,
-         INGESTION_DTTM,
-        INGESTION_DT
+        ETL_VERSION
     from {{ source('bronze_data', 't_brz_distribution_center_stdc') }}
     where ENTRY_TIMESTAMP = (select max_loaded_ts from latest_loaded)
 ),
@@ -42,8 +40,7 @@ ranked_data as (
 ),
 
 final_data as (
-    select
-      
+    select      
         M5DC,
         M5STORE,
         SOURCE_SYSTEM,
@@ -51,16 +48,14 @@ final_data as (
         BATCH_ID,
         md5(concat_ws('|', coalesce(trim(M5DC), ''))) as RECORD_CHECKSUM_HASH,
         ETL_VERSION,
-        INGESTION_DTTM,
-        INGESTION_DT,
-        abs(hash(M5DC || '|' || M5STORE)) as DISTRIBUTION_CENTER_KEY
+        CURRENT_TIMESTAMP() AS INGESTION_DTTM,
+        CURRENT_DATE() AS INGESTION_DT
     from ranked_data
     where rn = 1
 )
 
 
 select
-    CAST(DISTRIBUTION_CENTER_KEY AS NUMBER(20)) as DISTRIBUTION_CENTER_KEY,     
     CAST(M5DC AS NUMBER(3)) as DISTRIBUTION_CENTER_ID,                                   
     CAST(M5STORE AS number(38,0)) as STORE_ID,                              
     CAST(SOURCE_SYSTEM AS VARCHAR(100)) as SOURCE_SYSTEM,                   

@@ -2,11 +2,12 @@ version: 2
 
 sources:
   - name: silver_data                # will become source('raw_data', ...)
-    database: ANALYTICS           # your Snowflake database
-    schema: SILVER_SALES          # your Snowflake schema
+    schema: "{{ env_var('DBT_SILVER_SCHEMA') }}" # your Snowflake schema
+    database: "{{ env_var('DBT_SILVER_DATABASE') }}"                # your Snowflake schema
     tables:
       - name: T_DIM_STORE      
       - name: T_DIM_PRODUCT
       - name: T_DIM_INVENTORY_CATEGORY
       - name: T_DIM_MECHANIC
       - name: T_DIM_DATE
+      - name: T_FCT_WORK_ORDER_HEADER
