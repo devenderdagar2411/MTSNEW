@@ -95,35 +95,7 @@ WITH source_data AS (
         CAST(TRIM(W1WIPXO) AS VARCHAR(10)) AS ORIGIN_INVOICED_POS_PREFIX,
         CAST(TRIM(W1WOO) AS NUMERIC(10, 0)) AS ORIGIN_INVOICED_WORK_ORDER_NUMBER,
         CAST(TRIM(W1CPAT) AS VARCHAR(10)) AS CORP_AUTH_ASKED_FLAG,
-    -- Audit columns
-    CAST(TRIM(base.SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
-    CAST(TRIM(base.SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
-    CAST(TRIM(base.BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
-    CAST(TRIM(base.ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
-    CAST(TRIM(base.OPERATION) AS VARCHAR(10)) AS OPERATION,   
-    TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
-    FROM {{ source('bronze_data', 'T_BRZ_HEADER_WOMSTH') }} base
-    {% if is_incremental() %}
-    WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01T00:00:00Z') FROM {{ this }})
-    {% endif %}
-    QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY CONCAT_WS('|', 
-            CAST(TRIM(W1STORE) AS NUMBER(3, 0)), 
-            CAST(TRIM(W1FMTP) AS VARCHAR(10)), 
-            CAST(TRIM(W1WIPX) AS VARCHAR(10)), 
-            CAST(TRIM(W1WO) AS NUMBER(10, 0))
-        )
-        ORDER BY TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) DESC,W1CYMD desc,
-    W1HMS desc
-    ) = 1
-),
 
--- Step 2: Remove the source_with_keys CTE since joins are now in source_data
--- Step 3: Rank records by business key to handle duplicates
-ranked_source AS (
-    SELECT
-        sd.*,
-        
         -- Surrogate keys from joins
         dt.DATE_KEY AS TRANSACTION_DATE_SK,
         odt.DATE_KEY AS ORIGIN_TRANSACTION_SK,
@@ -141,79 +113,86 @@ ranked_source AS (
         -- Additional surrogate keys for sales reps
         orsr.SALES_REP_SK AS ORIGIN_SALES_REP_SK,
         crsr.SALES_REP_SK AS CREDITED_SALES_REP_SK,
+
+        -- Audit columns
+        CAST(TRIM(base.SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
+    CAST(TRIM(base.SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
+    CAST(TRIM(base.BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
+    CAST(TRIM(base.ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
+    CAST(TRIM(base.OPERATION) AS VARCHAR(10)) AS OPERATION,
         
         -- Create a tracking hash for change detection including all source fields AND joined surrogate keys
         MD5(CONCAT_WS('|',
             -- Original source fields
-            COALESCE(sd.TRANSACTION_DATE, ''),
-            COALESCE(sd.ORIGIN_TRANSACTION_DATE, ''),
-            COALESCE(CAST(sd.PRINT_DT AS VARCHAR), ''),
-            COALESCE(CAST(sd.CASH_REGISTER_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(sd.SALES_REP_STORE_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(sd.SALES_REP_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(sd.CUSTOMER_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(sd.NATIONAL_ACCOUNT_VENDOR_NUMBER AS VARCHAR), ''),
-            COALESCE(sd.VEHICLE_STATUS, ''),
-            COALESCE(CAST(sd.SHIPPING_TO_NUMBER AS VARCHAR), ''),
-            COALESCE(sd.CUSTOMER_NAME, ''),
-            COALESCE(sd.ADDRESS_LINE_1, ''),
-            COALESCE(sd.ADDRESS_LINE_2, ''),
-            COALESCE(sd.ADDRESS_LINE_3, ''),
-            COALESCE(sd.CITY, ''),
-            COALESCE(sd.STATE, ''),
-            COALESCE(sd.ZIP_CODE, ''),
-            COALESCE(sd.WORK_PHONE, ''),
-            COALESCE(sd.WORK_PHONE_EXT, ''),
-            COALESCE(sd.HOME_PHONE, ''),
-            COALESCE(CAST(sd.TERMS_CODE AS VARCHAR), ''),
-            COALESCE(CAST(sd.TAX_CODE AS VARCHAR), ''),
-            COALESCE(CAST(sd.TAX_DISTRICT_CODE AS VARCHAR), ''),
-            COALESCE(CAST(sd.BILLING_CODE AS VARCHAR), ''),
-            COALESCE(sd.DRIVER_NUMBER, ''),
-            COALESCE(sd.PURCHASE_ORDER_NUMBER, ''),
-            COALESCE(sd.SHIPPING_NAME, ''),
-            COALESCE(sd.SHIP_ADDRESS_1, ''),
-            COALESCE(sd.SHIP_ADDRESS_2, ''),
-            COALESCE(sd.SHIP_ADDRESS_3, ''),
-            COALESCE(sd.SHIP_CITY, ''),
-            COALESCE(sd.SHIP_STATE, ''),
-            COALESCE(sd.SHIP_ZIP, ''),
-            COALESCE(sd.ORIGIN_FORM_TYPE_CODE, ''),
-            COALESCE(CAST(sd.ORIGIN_SALES_REP_STORE_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(sd.ORIGIN_SALES_REP_NUMBER AS VARCHAR), ''),
-            COALESCE(sd.WORK_ORDER_STATUS, ''),
-            COALESCE(sd.HOLD_FLAG, ''),
-            COALESCE(sd.QUESTION_ASKED_FLAG, ''),
-            COALESCE(sd.COMMENT_FLAG, ''),
-            COALESCE(sd.ACCT_REVERSAL_FLAG, ''),
-            COALESCE(sd.PAYMENT_FLAG, ''),
-            COALESCE(sd.PAYMENT_TYPE_NAME, ''),
-            COALESCE(CAST(sd.TOTAL_TAX_EXEMPT_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_TAXABLE_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.SALES_SALES_TAX_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_AMOUNT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_EXTENDED_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_EXTENDED_COST_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_EXTENDED_GP_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_EXTENDED_COST_GP_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_GP_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_PROFIT_MARGIN AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_GP_NAB_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_NAB_PROFIT_MARGIN AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_SPIFF_AMT AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_SPIFF_POINTS AS VARCHAR), ''),
-            COALESCE(CAST(sd.TOTAL_TIRE_FEE AS VARCHAR), ''),
-            COALESCE(CAST(sd.NUMBER_OF_TIMES_PRINTED AS VARCHAR), ''),
-            COALESCE(CAST(sd.NAB_CREDIT_DUE AS VARCHAR), ''),
-            COALESCE(CAST(sd.NAB_CREDIT_RECEIVED AS VARCHAR), ''),
-            COALESCE(CAST(sd.NAB_CREDIT_PENDING AS VARCHAR), ''),
-            COALESCE(CAST(sd.CREDITED_SALES_REP_STORE_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(sd.CREDITED_SALES_REP_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(sd.ORIGIN_INVOICED_STORE_NUMBER AS VARCHAR), ''),
-            COALESCE(sd.ORIGIN_INVOICED_FORM_TYPE_CODE, ''),
-            COALESCE(sd.ORIGIN_INVOICED_POS_PREFIX, ''),
-            COALESCE(CAST(sd.ORIGIN_INVOICED_WORK_ORDER_NUMBER AS VARCHAR), ''),
-            COALESCE(sd.CORP_AUTH_ASKED_FLAG, ''),
+            COALESCE(TRIM(W1TRDT), ''),
+            COALESCE(TRIM(W1OTDT), ''),
+            COALESCE(TRIM(W1PRDT), ''),
+            COALESCE(TRIM(W1REGN), ''),
+            COALESCE(TRIM(W1SRST), ''),
+            COALESCE(TRIM(W1SLRP), ''),
+            COALESCE(TRIM(W1CST), ''),
+            COALESCE(TRIM(W1NAVD), ''),
+            COALESCE(TRIM(W1VSTS), ''),
+            COALESCE(TRIM(W1SHPN), ''),
+            COALESCE(TRIM(W1NAME), ''),
+            COALESCE(TRIM(W1ADR1), ''),
+            COALESCE(TRIM(W1ADR2), ''),
+            COALESCE(TRIM(W1ADR3), ''),
+            COALESCE(TRIM(W1CITY), ''),
+            COALESCE(TRIM(W1STAT), ''),
+            COALESCE(TRIM(W1ZIP), ''),
+            COALESCE(TRIM(W1WPHN), ''),
+            COALESCE(TRIM(W1WPE1), ''),
+            COALESCE(TRIM(W1HPHN), ''),
+            COALESCE(TRIM(W1TMCD), ''),
+            COALESCE(TRIM(W1TXCD), ''),
+            COALESCE(TRIM(W1TDCD), ''),
+            COALESCE(TRIM(W1BLCD), ''),
+            COALESCE(TRIM(W1DRNO), ''),
+            COALESCE(TRIM(W1PO), ''),
+            COALESCE(TRIM(W1SHNM), ''),
+            COALESCE(TRIM(W1SAD1), ''),
+            COALESCE(TRIM(W1SAD2), ''),
+            COALESCE(TRIM(W1SAD3), ''),
+            COALESCE(TRIM(W1SCTY), ''),
+            COALESCE(TRIM(W1SSTA), ''),
+            COALESCE(TRIM(W1SZIP), ''),
+            COALESCE(TRIM(W1OFMT), ''),
+            COALESCE(TRIM(W1OSRS), ''),
+            COALESCE(TRIM(W1OSLR), ''),
+            COALESCE(TRIM(W1STS), ''),
+            COALESCE(TRIM(W1HOLD), ''),
+            COALESCE(TRIM(W1QSTS), ''),
+            COALESCE(TRIM(W1CSTS), ''),
+            COALESCE(TRIM(W1AR), ''),
+            COALESCE(TRIM(W1PYMT), ''),
+            COALESCE(TRIM(W1PYNM), ''),
+            COALESCE(TRIM(W1TEXM), ''),
+            COALESCE(TRIM(W1TTXB), ''),
+            COALESCE(TRIM(W1TSLT), ''),
+            COALESCE(TRIM(W1TAMT), ''),
+            COALESCE(TRIM(W1AMT), ''),
+            COALESCE(TRIM(W1CAMT), ''),
+            COALESCE(TRIM(W1AMTGP), ''),
+            COALESCE(TRIM(W1CAMTGP), ''),
+            COALESCE(TRIM(W1GPAM), ''),
+            COALESCE(TRIM(W1GPMG), ''),
+            COALESCE(TRIM(W1GPNM), ''),
+            COALESCE(TRIM(W1GPNG), ''),
+            COALESCE(TRIM(W1TSAM), ''),
+            COALESCE(TRIM(W1TSPT), ''),
+            COALESCE(TRIM(W1TFEE), ''),
+            COALESCE(TRIM(W1PRSQ), ''),
+            COALESCE(TRIM(W1NACD), ''),
+            COALESCE(TRIM(W1NACR), ''),
+            COALESCE(TRIM(W1NACP), ''),
+            COALESCE(TRIM(W1ARST), ''),
+            COALESCE(TRIM(W1ARRP), ''),
+            COALESCE(TRIM(W1STOREO), ''),
+            COALESCE(TRIM(W1FMTPO), ''),
+            COALESCE(TRIM(W1WIPXO), ''),
+            COALESCE(TRIM(W1WOO), ''),
+            COALESCE(TRIM(W1CPAT), ''),
             -- Surrogate keys from dimension joins
             COALESCE(CAST(dt.DATE_KEY AS VARCHAR), ''),
             COALESCE(CAST(odt.DATE_KEY AS VARCHAR), ''),
@@ -228,51 +207,81 @@ ranked_source AS (
             COALESCE(CAST(ist.STORE_SK AS VARCHAR), ''),
             COALESCE(CAST(orsr.SALES_REP_SK AS VARCHAR), ''),
             COALESCE(CAST(crsr.SALES_REP_SK AS VARCHAR), '')
-        )) AS RECORD_CHECKSUM_HASH
-
-    FROM source_data sd
+        )) AS RECORD_CHECKSUM_HASH,
+        
+        TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
+    FROM {{ source('bronze_data', 'T_BRZ_HEADER_WOMSTH') }} base
     -- Date dimension lookups
-    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} dt ON dt.DATE_KEY = sd.TRANSACTION_DATE
-    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} odt ON odt.DATE_KEY = sd.ORIGIN_TRANSACTION_DATE
+    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} dt ON dt.DATE_KEY = CAST(TRIM(base.W1TRDT) AS VARCHAR(8))
+    LEFT JOIN {{ source('silver_data', 'T_DIM_DATE') }} odt ON odt.DATE_KEY = CAST(TRIM(base.W1OTDT) AS VARCHAR(8))
 
     --StoreManager dimension lookup
-    LEFT JOIN {{ ref('T_DIM_STORE_MANAGER') }} sm ON sm.STORE_NUMBER = sd.SALES_REP_STORE_NUMBER 
-        AND sd.ENTRY_TIMESTAMP BETWEEN sm.EFFECTIVE_DATE AND COALESCE(sm.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_STORE_MANAGER') }} sm ON sm.STORE_NUMBER = CAST(TRIM(base.W1SRST) AS NUMBER(3, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN sm.EFFECTIVE_DATE AND COALESCE(sm.EXPIRATION_DATE, '9999-12-31')
     
     -- Store dimension lookups
-    LEFT JOIN {{ ref('T_DIM_STORE') }} srst ON srst.STORE_NUMBER = sd.SALES_REP_STORE_NUMBER 
-        AND sd.ENTRY_TIMESTAMP BETWEEN srst.EFFECTIVE_DATE AND COALESCE(srst.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_STORE') }} orst ON orst.STORE_NUMBER = sd.ORIGIN_SALES_REP_STORE_NUMBER 
-        AND sd.ENTRY_TIMESTAMP BETWEEN orst.EFFECTIVE_DATE AND COALESCE(orst.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_STORE') }} crst ON crst.STORE_NUMBER = sd.CREDITED_SALES_REP_STORE_NUMBER 
-        AND sd.ENTRY_TIMESTAMP BETWEEN crst.EFFECTIVE_DATE AND COALESCE(crst.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_STORE') }} ist ON ist.STORE_NUMBER = sd.ORIGIN_INVOICED_STORE_NUMBER 
-        AND sd.ENTRY_TIMESTAMP BETWEEN ist.EFFECTIVE_DATE AND COALESCE(ist.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_STORE') }} srst ON srst.STORE_NUMBER = CAST(TRIM(base.W1SRST) AS NUMBER(3, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN srst.EFFECTIVE_DATE AND COALESCE(srst.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_STORE') }} orst ON orst.STORE_NUMBER = CAST(TRIM(base.W1OSRS) AS NUMBER(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN orst.EFFECTIVE_DATE AND COALESCE(orst.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_STORE') }} crst ON crst.STORE_NUMBER = CAST(TRIM(base.W1ARST) AS NUMERIC(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN crst.EFFECTIVE_DATE AND COALESCE(crst.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_STORE') }} ist ON ist.STORE_NUMBER = CAST(TRIM(base.W1STOREO) AS NUMERIC(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN ist.EFFECTIVE_DATE AND COALESCE(ist.EXPIRATION_DATE, '9999-12-31')
     
     -- Sales rep dimension lookups
-    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} sr ON sr.SALES_REP_NUMBER = sd.SALES_REP_NUMBER 
-        AND sd.ENTRY_TIMESTAMP BETWEEN sr.EFFECTIVE_DATE AND COALESCE(sr.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} orsr ON orsr.SALES_REP_NUMBER = sd.ORIGIN_SALES_REP_NUMBER 
-        AND sd.ENTRY_TIMESTAMP BETWEEN orsr.EFFECTIVE_DATE AND COALESCE(orsr.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} crsr ON crsr.SALES_REP_NUMBER = sd.CREDITED_SALES_REP_NUMBER 
-        AND sd.ENTRY_TIMESTAMP BETWEEN crsr.EFFECTIVE_DATE AND COALESCE(crsr.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} sr ON sr.SALES_REP_NUMBER = CAST(TRIM(base.W1SLRP) AS NUMBER(10, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN sr.EFFECTIVE_DATE AND COALESCE(sr.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} orsr ON orsr.SALES_REP_NUMBER = CAST(TRIM(base.W1OSLR) AS NUMBER(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN orsr.EFFECTIVE_DATE AND COALESCE(orsr.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_SALES_REP') }} crsr ON crsr.SALES_REP_NUMBER = CAST(TRIM(base.W1ARRP) AS NUMERIC(20, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN crsr.EFFECTIVE_DATE AND COALESCE(crsr.EXPIRATION_DATE, '9999-12-31')
     
     -- Form type dimension lookups
-    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ft ON ft.FORM_TYPE_CODE = sd.ORIGIN_FORM_TYPE_CODE 
-        AND sd.ENTRY_TIMESTAMP BETWEEN ft.EFFECTIVE_DATE AND COALESCE(ft.EXPIRATION_DATE, '9999-12-31')
-    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ift ON ift.FORM_TYPE_CODE = sd.ORIGIN_INVOICED_FORM_TYPE_CODE 
-        AND sd.ENTRY_TIMESTAMP BETWEEN ift.EFFECTIVE_DATE AND COALESCE(ift.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ft ON ft.FORM_TYPE_CODE = CAST(TRIM(base.W1OFMT) AS VARCHAR(10)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN ft.EFFECTIVE_DATE AND COALESCE(ft.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_FORM_TYPE') }} ift ON ift.FORM_TYPE_CODE = CAST(TRIM(base.W1FMTPO) AS VARCHAR(10)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN ift.EFFECTIVE_DATE AND COALESCE(ift.EXPIRATION_DATE, '9999-12-31')
     
     -- Customer dimension lookup
-    LEFT JOIN {{ ref('T_DIM_CUSTOMER') }} c ON c.CUSTOMER_ID = sd.CUSTOMER_NUMBER 
-        AND sd.ENTRY_TIMESTAMP BETWEEN c.EFFECTIVE_DATE AND COALESCE(c.EXPIRATION_DATE, '9999-12-31')
+    LEFT JOIN {{ ref('T_DIM_CUSTOMER') }} c ON c.CUSTOMER_ID = CAST(TRIM(base.W1CST) AS NUMBER(10, 0)) AND TO_TIMESTAMP_NTZ(TRIM(base.ENTRY_TIMESTAMP)) BETWEEN c.EFFECTIVE_DATE AND COALESCE(c.EXPIRATION_DATE, '9999-12-31')
+    
+    {% if is_incremental() %}
+    WHERE base.ENTRY_TIMESTAMP = '1900-01-01T00:00:00Z'
+        --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
+    {% endif %}
+),
+
+-- Step 2: Remove the source_with_keys CTE since joins are now in source_data
+-- Step 3: Rank records by business key to handle duplicates
+ranked_source AS (
+    SELECT 
+        sd.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY CONCAT_WS('|', sd.STORE_NUMBER, sd.FORM_TYPE_CODE, sd.POS_PREFIX, sd.WORK_ORDER_NUMBER)
+            ORDER BY sd.ENTRY_TIMESTAMP DESC
+        ) AS rn
+    FROM source_data sd
 ),
 
 -- Step 4: Remove duplicates by taking the latest record for each business key
+deduplicated_source AS (
+    SELECT * FROM ranked_source WHERE rn = 1
+),
+
+-- Step 5: Add previous hash for change detection
+source_with_lag AS (
+    SELECT
+        curr.*,
+        LAG(RECORD_CHECKSUM_HASH) OVER (
+            PARTITION BY CONCAT_WS('|', curr.STORE_NUMBER, curr.FORM_TYPE_CODE, curr.POS_PREFIX, curr.WORK_ORDER_NUMBER) 
+            ORDER BY curr.ENTRY_TIMESTAMP
+        ) AS prev_hash
+    FROM deduplicated_source curr
+),
+
+-- Step 6: Identify changes (new records or records with changed hash)
+changes AS (
+    SELECT *
+    FROM source_with_lag
+    WHERE (RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL)
+      AND OPERATION != 'DELETE'
+),
+
 -- Step 7: Identify deleted records
 deletes AS (
     SELECT *
-    FROM ranked_source
+    FROM deduplicated_source
     WHERE OPERATION = 'DELETE'
 ),
 
@@ -283,10 +292,13 @@ max_key AS (
 
 -- Step 9: Order changes and prepare for surrogate key assignment
 ordered_changes AS (
-    SELECT *
-    FROM ranked_source
-    WHERE OPERATION IN ('INSERT', 'UPDATE')
-       
+    SELECT 
+        ch.*,
+        LEAD(ENTRY_TIMESTAMP) OVER (
+            PARTITION BY CONCAT_WS('|', ch.STORE_NUMBER, ch.FORM_TYPE_CODE, ch.POS_PREFIX, ch.WORK_ORDER_NUMBER) 
+            ORDER BY ENTRY_TIMESTAMP
+        ) AS next_entry_ts
+    FROM changes ch
 ),
 
 -- Step 10: Generate new records with surrogate keys
@@ -369,9 +381,15 @@ new_rows AS (
         oc.ORIGIN_INVOICED_POS_PREFIX,
         oc.ORIGIN_INVOICED_WORK_ORDER_NUMBER,
         oc.CORP_AUTH_ASKED_FLAG,
-        case when ENTRY_TIMESTAMP='1900-01-01T00:00:00Z' then TRY_TO_DATE(oc.ORIGIN_TRANSACTION_DATE ,'YYYYMMDD') ELSE ENTRY_TIMESTAMP END AS EFFECTIVE_DATE,
-        '9999-12-31 23:59:59'::TIMESTAMP_NTZ AS EXPIRATION_DATE,
-        TRUE AS IS_CURRENT_FLAG,
+        TRY_TO_DATE(oc.ORIGIN_TRANSACTION_DATE,'YYYYMMDD') AS EFFECTIVE_DATE,
+        CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
+            ELSE '9999-12-31 23:59:59'::TIMESTAMP_NTZ
+        END AS EXPIRATION_DATE,
+        CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
+            ELSE TRUE
+        END AS IS_CURRENT_FLAG,
         oc.SOURCE_SYSTEM,
         oc.SOURCE_FILE_NAME,
         oc.BATCH_ID,

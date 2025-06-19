@@ -21,59 +21,82 @@ WITH source_data AS (
         CAST(TRIM(src.BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
         CAST(TRIM(src.ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
         CAST(TRIM(src.OPERATION) AS VARCHAR(10)) AS OPERATION,
-        TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
-    FROM {{ source('bronze_data', 'T_BRZ_STOREMANAGER_STMGRS') }} src
-    {% if is_incremental() %}
-    WHERE TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) > (SELECT COALESCE(MAX(EFFECTIVE_DATE),'1899-12-31T00:00:00Z') FROM {{ this }})
-    {% endif %}
-    QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY CAST(NULLIF(TRIM(src.M3STORE), '') AS NUMBER(5, 0))
-        ORDER BY TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) DESC
-    ) = 1
-),
-
--- Step 2: Join with dimension and calculate hash
-source_with_hash AS (
-    SELECT
-        src.*,
         dim.STORE_SK,
         MD5(CONCAT_WS('|',
-            COALESCE(src.MANAGER_NAME, ''),
-            COALESCE(src.CELL_NUMBER, ''),
-            COALESCE(src.EMAIL_ADDRESS, ''),
-            COALESCE(CAST(src.BASYS_SALESREP_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(src.REGIONAL_SALES_MANAGER_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(src.REGIONAL_OPERATIONS_MANAGER_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(src.AREA_DIRECTOR_MANAGER_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(src.PAYROLL_SALESREP_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(src.STORE_MANAGER_SALESREP_NUMBER AS VARCHAR), ''),
-            COALESCE(CAST(src.MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER AS VARCHAR), ''),
+            COALESCE(TRIM(src.M3NAME), ''),
+            COALESCE(TRIM(src."M3CELL#"), ''),
+            COALESCE(TRIM(src.M3EMAIL), ''),
+            COALESCE(TRIM(src.M3SLRP), ''),
+            COALESCE(TRIM(src.M3RSM), ''),
+            COALESCE(TRIM(src.M3ROM), ''),
+            COALESCE(TRIM(src.M3ADM), ''),
+            COALESCE(TRIM(src.M3PAY), ''),
+            COALESCE(TRIM(src.M3MGR), ''),
+            COALESCE(TRIM(src.M3MFGROM), ''),
             COALESCE(CAST(dim.STORE_SK AS VARCHAR), '')
-        )) AS RECORD_CHECKSUM_HASH
-    FROM source_data src
+        )) AS RECORD_CHECKSUM_HASH,
+        TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
+    FROM {{ source('bronze_data', 'T_BRZ_STOREMANAGER_STMGRS') }} src
     LEFT JOIN {{ ref('T_DIM_STORE') }} dim
-      ON dim.STORE_NUMBER = src.STORE_NUMBER
-     AND src.ENTRY_TIMESTAMP BETWEEN dim.EFFECTIVE_DATE AND COALESCE(dim.EXPIRATION_DATE, '9999-12-31')
+      ON dim.STORE_NUMBER = CAST(NULLIF(TRIM(src.M3STORE), '') AS NUMBER(3, 0))
+     AND TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) BETWEEN dim.EFFECTIVE_DATE AND COALESCE(dim.EXPIRATION_DATE, '9999-12-31')
+    {% if is_incremental() %}
+    WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
+        --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
+    {% endif %}
+   
 ),
 
--- Step 3: Identify changes (inserts/updates)
+-- Step 2: Deduplication
+ranked_source AS (
+    SELECT *,
+        ROW_NUMBER() OVER (
+            PARTITION BY STORE_NUMBER
+            ORDER BY ENTRY_TIMESTAMP DESC
+        ) AS rn
+    FROM source_data
+),
+deduplicated_source AS (
+    SELECT * FROM ranked_source WHERE rn = 1
+),
+
+-- Step 3: Detect inserts/updates
+source_with_lag AS (
+    SELECT
+        curr.*,
+        LAG(RECORD_CHECKSUM_HASH) OVER (
+            PARTITION BY STORE_NUMBER ORDER BY ENTRY_TIMESTAMP
+        ) AS prev_hash
+    FROM deduplicated_source curr
+),
 changes AS (
     SELECT *
-    FROM source_with_hash
-    WHERE OPERATION IN ('INSERT', 'UPDATE')
+    FROM source_with_lag
+    WHERE (RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL)
+      AND OPERATION != 'DELETE'
 ),
 
--- Step 4: Detect deletes
+-- Step 3b: Detect deletes
 deletes AS (
     SELECT *
-    FROM source_with_hash
+    FROM deduplicated_source
     WHERE OPERATION = 'DELETE'
 ),
 
--- Step 5: Get max surrogate key
+-- Step 4: Get max surrogate key
 max_key AS (
     SELECT COALESCE(MAX(STORE_MANAGER_SK), 0) AS max_sk FROM {{ this }}
 ),
+
+-- Step 5: Calculate future expiration dates for changes
+ordered_changes AS (
+    SELECT *,
+        LEAD(ENTRY_TIMESTAMP) OVER (
+            PARTITION BY STORE_NUMBER ORDER BY ENTRY_TIMESTAMP
+        ) AS next_entry_ts
+    FROM changes
+),
+
 -- Step 6: Generate new SCD2 rows for inserts/updates
 new_rows AS (
     SELECT
@@ -93,8 +116,14 @@ new_rows AS (
         oc.MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER,
         oc.STORE_SK,
         oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
-        '9999-12-31 23:59:59'::TIMESTAMP_NTZ as EXPIRATION_DATE,
-        TRUE AS IS_CURRENT_FLAG,
+        CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
+            ELSE '9999-12-31 23:59:59'::TIMESTAMP_NTZ
+        END AS EXPIRATION_DATE,
+        CASE
+            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
+            ELSE TRUE
+        END AS IS_CURRENT_FLAG,
         oc.SOURCE_SYSTEM,
         oc.SOURCE_FILE_NAME,
         oc.BATCH_ID,
@@ -102,7 +131,7 @@ new_rows AS (
         oc.ETL_VERSION,
         CURRENT_TIMESTAMP AS INGESTION_DTTM,
         CURRENT_DATE AS INGESTION_DT
-    FROM changes oc
+    FROM ordered_changes oc
     CROSS JOIN max_key
     WHERE NOT EXISTS (
         SELECT 1
@@ -146,7 +175,7 @@ expired_rows AS (
      AND old.RECORD_CHECKSUM_HASH != new.RECORD_CHECKSUM_HASH
 ),
 
--- Step 9: Soft deletes - expire records if source says DELETE
+-- Step 8: Soft deletes - expire records if source says DELETE
 soft_deletes AS (
     SELECT
         old.STORE_MANAGER_SK,
