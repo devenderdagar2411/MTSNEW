@@ -9,8 +9,10 @@
 -- Step 1: Incremental Load Strategy
 with latest_loaded as (
     {% if is_incremental() %}
-        select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') as max_loaded_ts
-        from {{ this }}
+        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01T00:00:00Z') as max_loaded_ts
+        from {{ source('bronze_data', 'T_BRZ_TIRE_SIZE_BSOTRM') }}
+    {% else %}
+        select '1900-01-01T00:00:00Z' as max_loaded_ts
     {% endif %}
 ),
 
