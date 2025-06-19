@@ -86,7 +86,7 @@ WITH source_data AS (
                      CAST(TRIM(src.W2WIPX) AS VARCHAR(3)), 
                      CAST(TRIM(src.W2WO) AS NUMBER(10, 0)), 
                      CAST(TRIM(src.W2SEQ) AS NUMBER(4, 0))
-        ORDER BY TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) DESC,,W2CYMD desc,W2HMS desc
+        ORDER BY TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) DESC,W2CYMD desc,W2HMS desc
     ) = 1
 ),
 
