@@ -50,7 +50,7 @@ WITH source_data AS (
         )) AS RECORD_CHECKSUM_HASH
     FROM {{ source('bronze_data', 'T_BRZ_INV_VENDOR_INVEND') }}
     {% if is_incremental() %}
-        WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
+        WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1899-12-31T00:00:00Z') FROM {{ this }})
     {% endif %}
 ),
 

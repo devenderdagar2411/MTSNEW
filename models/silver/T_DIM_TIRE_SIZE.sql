@@ -9,10 +9,8 @@
 -- Step 1: Incremental Load Strategy
 with latest_loaded as (
     {% if is_incremental() %}
-        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01T00:00:00Z') as max_loaded_ts
-        from {{ source('bronze_data', 'T_BRZ_TIRE_SIZE_BSOTRM') }}
-    {% else %}
-        select '1900-01-01T00:00:00Z' as max_loaded_ts
+        select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') as max_loaded_ts
+        from {{ this }}
     {% endif %}
 ),
 
@@ -43,7 +41,7 @@ ranked_data as (
     select *,
         row_number() over (
             partition by TIRE_SIZE_CODE
-            order by ENTRY_TIMESTAMP desc, SEQUENCE_NUMBER desc
+            order by ENTRY_TIMESTAMP desc
         ) as rn
     from source_data
 ),
@@ -129,5 +127,6 @@ select
     CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,
     CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,
     CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,
-    CAST(INGESTION_DT AS DATE) as INGESTION_DT
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT,
+    ENTRY_TIMESTAMP
 from final_data

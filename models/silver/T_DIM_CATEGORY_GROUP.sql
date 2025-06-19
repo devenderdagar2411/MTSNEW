@@ -20,7 +20,7 @@ with source_data as (
 
     {% if is_incremental() %}
     where ENTRY_TIMESTAMP = (
-        select coalesce(max(INGESTION_DTTM), '1900-01-01') from {{ this }}
+        select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') from {{ this }}
     )
     {% endif %}
 ),
@@ -57,5 +57,6 @@ select
     CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,      
     CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                        
     CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                  
-    CAST(INGESTION_DT AS DATE) as INGESTION_DT  
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT,
+    CAST(ENTRY_TIMESTAMP AS TIMESTAMP_NTZ) AS ENTRY_TIMESTAMP   
 from final_data
