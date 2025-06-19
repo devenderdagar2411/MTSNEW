@@ -41,7 +41,7 @@ ranked_data as (
     select *,
         row_number() over (
             partition by TIRE_SIZE_CODE
-            order by ENTRY_TIMESTAMP desc, SEQUENCE_NUMBER desc
+            order by ENTRY_TIMESTAMP desc
         ) as rn
     from source_data
 ),
@@ -127,5 +127,6 @@ select
     CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,
     CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,
     CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,
-    CAST(INGESTION_DT AS DATE) as INGESTION_DT
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT,
+    ENTRY_TIMESTAMP
 from final_data

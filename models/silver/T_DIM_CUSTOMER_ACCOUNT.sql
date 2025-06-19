@@ -22,9 +22,8 @@ with source_data as (
         RECORD_CHECKSUM_HASH,
         ETL_VERSION
     from {{ source('bronze_data', 'T_BRZ_CUSTOMER_ACCOUNT_SACACH') }}
-    {% if is_incremental() %}
-    --     -- Only pull records newer than the latest already loaded
-    where ENTRY_TIMESTAMP > (select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') from {{ this }})
+   {% if is_incremental() %}    
+        WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1899-12-31T00:00:00Z') FROM {{ this }})
     {% endif %}
 ),
 
