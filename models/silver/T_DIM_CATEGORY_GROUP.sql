@@ -20,7 +20,7 @@ with source_data as (
 
     {% if is_incremental() %}
     where ENTRY_TIMESTAMP = (
-        select coalesce(max(INGESTION_DTTM), '1900-01-01') from {{ this }}
+        select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') from {{ this }}
     )
     {% endif %}
 ),

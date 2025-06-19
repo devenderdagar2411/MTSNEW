@@ -22,10 +22,10 @@ with source_data as (
         RECORD_CHECKSUM_HASH,
         ETL_VERSION
     from {{ source('bronze_data', 'T_BRZ_CUSTOMER_ACCOUNT_SACACH') }}
-    -- {% if is_incremental() %}
+    {% if is_incremental() %}
     --     -- Only pull records newer than the latest already loaded
-    --     where ENTRY_TIMESTAMP > (select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01') from {{ this }})
-    -- {% endif %}
+    where ENTRY_TIMESTAMP > (select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') from {{ this }})
+    {% endif %}
 ),
 
 ranked_data as (
@@ -33,7 +33,7 @@ ranked_data as (
         *,
         row_number() over (
             partition by BYACTY 
-            order by ENTRY_TIMESTAMP desc, SEQUENCE_NUMBER desc
+            order by ENTRY_TIMESTAMP desc
         ) as rn
     from source_data
 ),
