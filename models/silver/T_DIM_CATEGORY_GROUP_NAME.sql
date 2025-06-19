@@ -8,8 +8,10 @@
 
 with latest_loaded as (
     {% if is_incremental() %}
-        select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') as max_loaded_ts
-        from {{ this }}
+        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01T00:00:00Z') as max_loaded_ts
+        from {{ source('bronze_data', 'T_BRZ_CATEGORY_GRP_NAME_CTGPNM') }}
+    {% else %}
+        select '1900-01-01T00:00:00Z' as max_loaded_ts
     {% endif %}
 ),
 
@@ -27,7 +29,7 @@ source_data as (
         INGESTION_DTTM,
         INGESTION_DT
     FROM {{ source('bronze_data', 'T_BRZ_CATEGORY_GRP_NAME_CTGPNM') }}
-    where ENTRY_TIMESTAMP > (select max_loaded_ts from latest_loaded)
+    where ENTRY_TIMESTAMP = (select max_loaded_ts from latest_loaded)
 ),
 
 ranked_data as (
@@ -53,8 +55,7 @@ final_data as (
         )) AS RECORD_CHECKSUM_HASH,
         ETL_VERSION,
         CURRENT_TIMESTAMP() AS INGESTION_DTTM,
-        CURRENT_DATE() AS INGESTION_DT,
-        ENTRY_TIMESTAMP
+        CURRENT_DATE() AS INGESTION_DT
     from ranked_data
     where rn = 1
 )
