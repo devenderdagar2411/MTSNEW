@@ -53,7 +53,8 @@ final_data as (
         )) AS RECORD_CHECKSUM_HASH,
         ETL_VERSION,
         CURRENT_TIMESTAMP() AS INGESTION_DTTM,
-        CURRENT_DATE() AS INGESTION_DT
+        CURRENT_DATE() AS INGESTION_DT,
+        ENTRY_TIMESTAMP
     from ranked_data
     where rn = 1
 )
