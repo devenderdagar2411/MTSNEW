@@ -8,10 +8,8 @@
 
 with latest_loaded as (
     {% if is_incremental() %}
-        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01T00:00:00Z') as max_loaded_ts
-        from {{ source('bronze_data', 't_brz_brand_inbrnd') }}
-    {% else %}
-        select '1900-01-01T00:00:00Z' as max_loaded_ts
+        select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') as max_loaded_ts
+        from {{ this }}
     {% endif %}
 ),
 

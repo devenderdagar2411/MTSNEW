@@ -24,9 +24,7 @@ WITH source_data AS (
         TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_STOREMANAGER_STMGRS') }} src
     {% if is_incremental() %}
-    WHERE ENTRY_TIMESTAMP > (SELECT MAX(EFFECTIVE_DATE) FROM {{ this }})
-	{% else %}
-        select '1900-01-01T00:00:00Z' as max_loaded_ts
+    WHERE TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) > (SELECT COALESCE(MAX(EFFECTIVE_DATE),'1899-12-31T00:00:00Z') FROM {{ this }})
     {% endif %}
     QUALIFY ROW_NUMBER() OVER (
         PARTITION BY CAST(NULLIF(TRIM(src.M3STORE), '') AS NUMBER(5, 0))
@@ -76,17 +74,7 @@ deletes AS (
 max_key AS (
     SELECT COALESCE(MAX(STORE_MANAGER_SK), 0) AS max_sk FROM {{ this }}
 ),
-
--- Step 6: Calculate future expiration dates for changes
-ordered_changes AS (
-    SELECT *,
-        LEAD(ENTRY_TIMESTAMP) OVER (
-            PARTITION BY STORE_NUMBER ORDER BY ENTRY_TIMESTAMP
-        ) AS next_entry_ts
-    FROM changes
-),
-
--- Step 7: Generate new SCD2 rows for inserts/updates
+-- Step 6: Generate new SCD2 rows for inserts/updates
 new_rows AS (
     SELECT
         ROW_NUMBER() OVER (
@@ -105,14 +93,8 @@ new_rows AS (
         oc.MFG_REGIONAL_OPERATIONS_MANAGER_NUMBER,
         oc.STORE_SK,
         oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
-            ELSE '9999-12-31 23:59:59'::TIMESTAMP_NTZ
-        END AS EXPIRATION_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
-            ELSE TRUE
-        END AS IS_CURRENT_FLAG,
+        '9999-12-31 23:59:59'::TIMESTAMP_NTZ as EXPIRATION_DATE,
+        TRUE AS IS_CURRENT_FLAG,
         oc.SOURCE_SYSTEM,
         oc.SOURCE_FILE_NAME,
         oc.BATCH_ID,
@@ -120,7 +102,7 @@ new_rows AS (
         oc.ETL_VERSION,
         CURRENT_TIMESTAMP AS INGESTION_DTTM,
         CURRENT_DATE AS INGESTION_DT
-    FROM ordered_changes oc
+    FROM changes oc
     CROSS JOIN max_key
     WHERE NOT EXISTS (
         SELECT 1
@@ -131,7 +113,7 @@ new_rows AS (
     )
 ),
 
--- Step 8: Expire old current rows when updates happen
+-- Step 7: Expire old current rows when updates happen
 expired_rows AS (
     SELECT
         old.STORE_MANAGER_SK,
