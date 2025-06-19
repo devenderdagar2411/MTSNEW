@@ -8,10 +8,8 @@
 
 with latest_loaded as (
     {% if is_incremental() %}
-        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01T00:00:00Z') as max_loaded_ts
-        from {{ source('bronze_data', 't_brz_brand_inbrnd') }}
-    {% else %}
-        select '1900-01-01T00:00:00Z' as max_loaded_ts
+        select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') as max_loaded_ts
+        from {{ this }}
     {% endif %}
 ),
 
@@ -29,7 +27,7 @@ source_data as (
         INGESTION_DTTM,
         INGESTION_DT
     from {{ source('bronze_data', 't_brz_brand_inbrnd') }}
-    where ENTRY_TIMESTAMP = (select max_loaded_ts from latest_loaded)
+    where ENTRY_TIMESTAMP > (select max_loaded_ts from latest_loaded)
 ),
 
 ranked_data as (
@@ -43,8 +41,7 @@ ranked_data as (
 ),
 
 final_data as (
-    select
-    
+    select   
        BRAND_ID,
        BRAND_NAME,
        SOURCE_SYSTEM,
@@ -53,7 +50,8 @@ final_data as (
         md5(concat_ws('|', coalesce(trim(BRAND_NAME), ''))) as RECORD_CHECKSUM_HASH,
       ETL_VERSION,
          CURRENT_TIMESTAMP() AS INGESTION_DTTM,
-        CURRENT_DATE() AS INGESTION_DT
+        CURRENT_DATE() AS INGESTION_DT,
+        ENTRY_TIMESTAMP
     from ranked_data
     where rn = 1
 )
@@ -67,5 +65,6 @@ select
     CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,      
     CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                        
     CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                  
-    CAST(INGESTION_DT AS DATE) as INGESTION_DT                           
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT,
+    CAST(ENTRY_TIMESTAMP AS TIMESTAMP_NTZ) AS ENTRY_TIMESTAMP                         
 from final_data

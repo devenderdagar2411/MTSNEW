@@ -7,10 +7,8 @@
 
 with latest_loaded as (
     {% if is_incremental() %}
-        select coalesce(max(ENTRY_TIMESTAMP), '1900-01-01'::timestamp) as max_loaded_ts
-        from {{ source('bronze_data', 't_brz_distribution_center_stdc') }}
-    {% else %}
-        select '1900-01-01'::timestamp as max_loaded_ts
+        select coalesce(max(ENTRY_TIMESTAMP), '1899-12-31T00:00:00Z') as max_loaded_ts
+        from {{ this }}
     {% endif %}
 ),
 
@@ -24,9 +22,9 @@ source_data as (
         SOURCE_SYSTEM,
         SOURCE_FILE_NAME,
         BATCH_ID,
-        ETL_VERSION
+        ETL_VERSION,C1CYMD,C1HMS
     from {{ source('bronze_data', 't_brz_distribution_center_stdc') }}
-    where ENTRY_TIMESTAMP = (select max_loaded_ts from latest_loaded)
+    where ENTRY_TIMESTAMP > (select max_loaded_ts from latest_loaded)
 ),
 
 ranked_data as (
@@ -34,7 +32,7 @@ ranked_data as (
         *,
         row_number() over (
             partition by M5STORE
-            order by ENTRY_TIMESTAMP desc, SEQUENCE_NUMBER desc
+            order by ENTRY_TIMESTAMP desc,C1CYMD desc,C1HMS desc
         ) as rn
     from source_data
 ),
@@ -64,5 +62,6 @@ select
     CAST(RECORD_CHECKSUM_HASH AS VARCHAR(64)) as RECORD_CHECKSUM_HASH,      
     CAST(ETL_VERSION AS VARCHAR(20)) as ETL_VERSION,                        
     CAST(INGESTION_DTTM AS TIMESTAMP_NTZ) as INGESTION_DTTM,                  
-    CAST(INGESTION_DT AS DATE) as INGESTION_DT                           
+    CAST(INGESTION_DT AS DATE) as INGESTION_DT,
+    CAST(ENTRY_TIMESTAMP AS TIMESTAMP_NTZ) AS ENTRY_TIMESTAMP                         
 from final_data
