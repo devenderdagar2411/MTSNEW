@@ -81,11 +81,7 @@ WITH source_data AS (
     WHERE TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1899-12-31T00:00:00Z') FROM {{ this }})
     {% endif %}
     QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY CAST(TRIM(src.W2STORE) AS NUMBER(3, 0)), 
-                     CAST(TRIM(src.W2FMTP) AS VARCHAR(2)), 
-                     CAST(TRIM(src.W2WIPX) AS VARCHAR(3)), 
-                     CAST(TRIM(src.W2WO) AS NUMBER(10, 0)), 
-                     CAST(TRIM(src.W2SEQ) AS NUMBER(4, 0))
+        PARTITION BY W2STORE,W2WO,W2FMTP,W2WIPX
         ORDER BY TO_TIMESTAMP_NTZ(TRIM(src.ENTRY_TIMESTAMP)) DESC,W2CYMD desc,W2HMS desc
     ) = 1
 ),

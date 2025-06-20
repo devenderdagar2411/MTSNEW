@@ -11,83 +11,55 @@ WITH source_data AS (
         CAST(TRIM(AOMCTP) AS VARCHAR(1)) AS MECHANIC_TYPE,
         CAST(TRIM(AOEMST) AS INTEGER) AS EMPLOYEE_STORE_NUMBER,
         CAST(TRIM(AOEMP) AS INTEGER) AS EMPLOYEE_ID,
-        CAST(TRIM(AOUSER) AS VARCHAR(10)) AS LAST_MODIFIED_USER,
-        TO_DATE(CAST(TRIM(AOCYMD) AS VARCHAR), 'YYYYMMDD') AS LAST_MODIFIED_DATE,
-        CAST(TRIM(AOHMS) AS INTEGER) AS LAST_MODIFIED_TIME,
-        CAST(TRIM(AOWKSN) AS VARCHAR(10)) AS WORKSTATION_ID,
         CAST(TRIM(SOURCE_SYSTEM) AS VARCHAR(100)) AS SOURCE_SYSTEM,
         CAST(TRIM(SOURCE_FILE_NAME) AS VARCHAR(255)) AS SOURCE_FILE_NAME,
         CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
         CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
         CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
-        MD5(CONCAT_WS('|',
-            COALESCE(TRIM(AONAME), ''),
-            COALESCE(TRIM(AOMCTP), ''),
-            COALESCE(TRIM(AOEMST), ''),
-            COALESCE(TRIM(AOEMP), ''),
-            COALESCE(TRIM(AOUSER), ''),
-            COALESCE(TRIM(AOCYMD), ''),
-            COALESCE(TRIM(AOHMS), ''),
-            COALESCE(TRIM(AOWKSN), '')
-        )) AS RECORD_CHECKSUM_HASH,
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_MECHANICS_WOMECH') }}
     {% if is_incremental() %}
         WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1899-12-31T00:00:00Z') FROM {{ this }})
     {% endif %}
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY STORE_ID,MECHANIC_ID
+        ORDER BY TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) DESC
+    ) = 1
+
 ),
 
-ranked_source AS (
-    SELECT *,
-        ROW_NUMBER() OVER (
-            PARTITION BY STORE_ID, MECHANIC_ID
-            ORDER BY ENTRY_TIMESTAMP DESC
-        ) AS rn
-    FROM source_data
+joined_data_with_checksum AS (
+    SELECT 
+        sd.*,
+        -- Add joined dimension keys
+        CAST(dim.STORE_SK AS NUMBER(20,0)) AS STORE_SK,
+        -- MD5 hash calculation
+        MD5(CONCAT_WS('|',
+            COALESCE(sd.MECHANIC_NAME, ''),
+            COALESCE(sd.MECHANIC_TYPE, ''),
+            COALESCE(CAST(sd.EMPLOYEE_STORE_NUMBER AS VARCHAR), ''),
+            COALESCE(CAST(sd.EMPLOYEE_ID AS VARCHAR), ''),
+            COALESCE(CAST(dim.STORE_SK AS VARCHAR), '')
+        )) AS RECORD_CHECKSUM_HASH
+    FROM source_data sd
+    LEFT JOIN {{ ref('T_DIM_STORE') }} dim 
+        ON dim.STORE_NUMBER = sd.STORE_ID 
+        AND sd.ENTRY_TIMESTAMP BETWEEN dim.EFFECTIVE_DATE 
+        AND COALESCE(dim.EXPIRATION_DATE, '9999-12-31')
 ),
 
-deduplicated_source AS (
-    SELECT * FROM ranked_source WHERE rn = 1
-),
-
-source_with_lag AS (
-    SELECT
-        curr.*,
-        LAG(RECORD_CHECKSUM_HASH) OVER (
-            PARTITION BY STORE_ID, MECHANIC_ID ORDER BY ENTRY_TIMESTAMP
-        ) AS prev_hash
-    FROM deduplicated_source curr
-),
-
+-- Step 2: Split for changes and deletes
 changes AS (
-    SELECT *
-    FROM source_with_lag
-    WHERE (RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL)
-      AND OPERATION != 'DELETE'
+    SELECT * FROM joined_data_with_checksum
+    WHERE OPERATION IN ('INSERT', 'UPDATE')
 ),
-
 deletes AS (
-    SELECT *
-    FROM deduplicated_source
+    SELECT * FROM joined_data_with_checksum
     WHERE OPERATION = 'DELETE'
 ),
 
-{% if is_incremental() %}
 max_key AS (
     SELECT COALESCE(MAX(MECHANIC_SK), 0) AS max_sk FROM {{ this }}
-),
-{% else %}
-max_key AS (
-    SELECT 0 AS max_sk
-),
-{% endif %}
-
-ordered_changes AS (
-    SELECT *,
-        LEAD(ENTRY_TIMESTAMP) OVER (
-            PARTITION BY STORE_ID, MECHANIC_ID ORDER BY ENTRY_TIMESTAMP
-        ) AS next_entry_ts
-    FROM changes
 ),
 
 new_rows AS (
@@ -102,19 +74,9 @@ new_rows AS (
         oc.EMPLOYEE_STORE_NUMBER,
         oc.EMPLOYEE_ID,
         CAST(dim.STORE_SK AS number(20,0) ) AS STORE_SK,
-        oc.LAST_MODIFIED_USER,
-        oc.LAST_MODIFIED_DATE,
-        oc.LAST_MODIFIED_TIME,
-        oc.WORKSTATION_ID,
         oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
-            ELSE TO_TIMESTAMP_NTZ('9999-12-31 23:59:59')
-        END AS EXPIRATION_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
-            ELSE TRUE
-        END AS IS_CURRENT_FLAG,
+        '9999-12-31 23:59:59' AS EXPIRATION_DATE,
+        TRUE AS IS_CURRENT_FLAG,
         oc.SOURCE_SYSTEM,
         oc.SOURCE_FILE_NAME,
         oc.BATCH_ID,
@@ -122,7 +84,7 @@ new_rows AS (
         oc.ETL_VERSION,
         CURRENT_TIMESTAMP() AS INGESTION_DTTM,
         CURRENT_DATE() AS INGESTION_DT
-    FROM ordered_changes oc
+    FROM changes oc
     CROSS JOIN max_key
     LEFT JOIN {{ ref('T_DIM_STORE') }} dim
       ON dim.STORE_NUMBER = oc.STORE_ID
@@ -147,10 +109,6 @@ expired_rows AS (
         old.EMPLOYEE_STATUS,
         old.EMPLOYEE_ID,
         old.STORE_SK,
-        old.LAST_MODIFIED_USER,
-        old.LAST_MODIFIED_DATE,
-        old.LAST_MODIFIED_TIME,
-        old.WORKSTATION_ID,
         old.EFFECTIVE_DATE,
         new.EFFECTIVE_DATE - INTERVAL '1 second' AS EXPIRATION_DATE,
         FALSE AS IS_CURRENT_FLAG,
@@ -179,10 +137,6 @@ soft_deleted_rows AS (
         old.EMPLOYEE_STATUS,
         old.EMPLOYEE_ID,
         old.STORE_SK,
-        old.LAST_MODIFIED_USER,
-        old.LAST_MODIFIED_DATE,
-        old.LAST_MODIFIED_TIME,
-        old.WORKSTATION_ID,
         old.EFFECTIVE_DATE,
         del.ENTRY_TIMESTAMP AS EXPIRATION_DATE,
         FALSE AS IS_CURRENT_FLAG,

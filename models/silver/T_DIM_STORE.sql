@@ -66,58 +66,28 @@ WITH source_data AS (
         TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
     FROM {{ source('bronze_data', 'T_BRZ_STORE_MASTER_STMAST') }}
     {% if is_incremental() %}
-    WHERE ENTRY_TIMESTAMP ='1900-01-01T00:00:00Z'
-        --WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1900-01-01') FROM {{ this }})
+        WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1899-12-31T00:00:00Z') FROM {{ this }})
     {% endif %}
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY CAST(TRIM(A4STORE) AS NUMBER(3,0))
+        ORDER BY TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) DESC
+    ) = 1
 ),
 
-ranked_source AS (
-    SELECT *,
-        ROW_NUMBER() OVER (
-            PARTITION BY STORE_NUMBER
-            ORDER BY ENTRY_TIMESTAMP DESC
-        ) AS rn
-    FROM source_data
-),
-
-deduplicated_source AS (
-    SELECT * FROM ranked_source WHERE rn = 1
-),
-
-source_with_lag AS (
-    SELECT
-        curr.*,
-        LAG(RECORD_CHECKSUM_HASH) OVER (
-            PARTITION BY STORE_NUMBER ORDER BY ENTRY_TIMESTAMP
-        ) AS prev_hash
-    FROM deduplicated_source curr
-),
-
+-- Step 2: Split for changes and deletes
 changes AS (
-    SELECT *
-    FROM source_with_lag
-    WHERE (RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL)
-      AND OPERATION != 'DELETE'
+    SELECT * FROM source_data
+    WHERE OPERATION IN ('INSERT', 'UPDATE')
 ),
-
 deletes AS (
-    SELECT *
-    FROM deduplicated_source
+    SELECT * FROM source_data
     WHERE OPERATION = 'DELETE'
 ),
+
 
 max_key AS (
     SELECT COALESCE(MAX(STORE_SK), 0) AS max_sk FROM {{ this }}
 ),
-
-ordered_changes AS (
-    SELECT *,
-        LEAD(ENTRY_TIMESTAMP) OVER (
-            PARTITION BY STORE_NUMBER ORDER BY ENTRY_TIMESTAMP
-        ) AS next_entry_ts
-    FROM changes
-),
-
 new_rows AS (
     SELECT
         ROW_NUMBER() OVER (
@@ -155,14 +125,10 @@ new_rows AS (
         NULL AS LATITUDE,
         NULL AS LONGITUDE,
         oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
-            ELSE '9999-12-31 23:59:59'::TIMESTAMP_NTZ
-        END AS EXPIRATION_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
-            ELSE TRUE
-        END AS IS_CURRENT_FLAG,
+        '9999-12-31 23:59:59'::TIMESTAMP_NTZ
+         AS EXPIRATION_DATE,
+        TRUE
+         AS IS_CURRENT_FLAG,
         oc.SOURCE_SYSTEM,
         oc.SOURCE_FILE_NAME,
         oc.BATCH_ID,
@@ -170,7 +136,7 @@ new_rows AS (
         oc.ETL_VERSION,
         CURRENT_TIMESTAMP AS INGESTION_DTTM,
         CURRENT_DATE AS INGESTION_DT
-    FROM ordered_changes oc
+    FROM changes oc
     CROSS JOIN max_key
     WHERE NOT EXISTS (
         SELECT 1
