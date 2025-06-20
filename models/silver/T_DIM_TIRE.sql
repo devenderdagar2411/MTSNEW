@@ -3,6 +3,7 @@
     unique_key = ['TIRE_VENDOR_SK']
 ) }}
 
+-- Step 1: Load and deduplicate source data using QUALIFY
 WITH source_data AS (
     SELECT
         CAST(TRIM(K3CCCD) AS NUMBER(3,0)) AS VENDOR_TIER_CODE,
@@ -28,79 +29,52 @@ WITH source_data AS (
         CAST(TRIM(BATCH_ID) AS VARCHAR(100)) AS BATCH_ID,
         CAST(TRIM(ETL_VERSION) AS VARCHAR(50)) AS ETL_VERSION,
         CAST(TRIM(OPERATION) AS VARCHAR(10)) AS OPERATION,
-        MD5(
-            CONCAT_WS('|',
-                COALESCE(TRIM(K3NAME), ''),
-                COALESCE(TRIM(K3CB), ''),
-                COALESCE(TRIM(K3POSCA), ''),
-                COALESCE(TRIM(K3MINGP), ''),
-                COALESCE(TRIM(K3EX001), ''),
-                COALESCE(TRIM(K3EX002), ''),
-                COALESCE(TRIM(K3EX003), ''),
-                COALESCE(TRIM(K3EX004), ''),
-                COALESCE(TRIM(K3EX005), ''),
-                COALESCE(TRIM(K3EX016), ''),
-                COALESCE(TRIM(K3EX017), ''),
-                COALESCE(TRIM(K3EX018), ''),
-                COALESCE(TRIM(K3EX019), ''),
-                COALESCE(TRIM(K3EX026), ''),
-                COALESCE(TRIM(K3EX027), ''),
-                COALESCE(TRIM(K3EX028), ''),
-                COALESCE(TRIM(K3EX029), '')
-            )
-        ) AS RECORD_CHECKSUM_HASH,
-        TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP
-    FROM {{ source('bronze_data', 'T_BRZ_TIRE_MASTER_ITCLVT') }} base
+        TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) AS ENTRY_TIMESTAMP,
+        MD5(CONCAT_WS('|',
+            COALESCE(TRIM(K3NAME), ''),
+            COALESCE(TRIM(K3CB), ''),
+            COALESCE(TRIM(K3POSCA), ''),
+            COALESCE(TRIM(K3MINGP), ''),
+            COALESCE(TRIM(K3EX001), ''),
+            COALESCE(TRIM(K3EX002), ''),
+            COALESCE(TRIM(K3EX003), ''),
+            COALESCE(TRIM(K3EX004), ''),
+            COALESCE(TRIM(K3EX005), ''),
+            COALESCE(TRIM(K3EX016), ''),
+            COALESCE(TRIM(K3EX017), ''),
+            COALESCE(TRIM(K3EX018), ''),
+            COALESCE(TRIM(K3EX019), ''),
+            COALESCE(TRIM(K3EX026), ''),
+            COALESCE(TRIM(K3EX027), ''),
+            COALESCE(TRIM(K3EX028), ''),
+            COALESCE(TRIM(K3EX029), '')
+        )) AS RECORD_CHECKSUM_HASH
+    FROM {{ source('bronze_data', 'T_BRZ_TIRE_MASTER_ITCLVT') }}
     {% if is_incremental() %}
-    WHERE ENTRY_TIMESTAMP > (SELECT COALESCE(MAX(EFFECTIVE_DATE), '1899-12-31T00:00:00Z') FROM {{ this }})
+    WHERE TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) > (
+        SELECT COALESCE(MAX(EFFECTIVE_DATE), '1899-12-31T00:00:00Z') FROM {{ this }}
+    )
     {% endif %}
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY CAST(TRIM(K3CCCD) AS NUMBER(3,0))
+        ORDER BY TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) DESC
+    ) = 1
 ),
 
-ranked_source AS (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY VENDOR_TIER_CODE
-               ORDER BY ENTRY_TIMESTAMP DESC
-           ) AS rn
-    FROM source_data
-),
-deduplicated_source AS (
-    SELECT * FROM ranked_source WHERE rn = 1
-),
-
-source_with_lag AS (
-    SELECT
-        curr.*,
-        LAG(RECORD_CHECKSUM_HASH) OVER (
-            PARTITION BY VENDOR_TIER_CODE ORDER BY ENTRY_TIMESTAMP
-        ) AS prev_hash
-    FROM deduplicated_source curr
-),
+-- Step 2: Split for changes and deletes
 changes AS (
-    SELECT *
-    FROM source_with_lag
-    WHERE (RECORD_CHECKSUM_HASH != prev_hash OR prev_hash IS NULL)
-      AND OPERATION != 'DELETE'
+    SELECT * FROM source_data
+    WHERE OPERATION IN ('INSERT', 'UPDATE')
 ),
-
 deletes AS (
-    SELECT *
-    FROM deduplicated_source
+    SELECT * FROM source_data
     WHERE OPERATION = 'DELETE'
 ),
 
+-- Step 3: Get max surrogate key
 max_key AS (
     SELECT COALESCE(MAX(TIRE_VENDOR_SK), 0) AS max_sk FROM {{ this }}
 ),
-
-ordered_changes AS (
-    SELECT *,
-        LEAD(ENTRY_TIMESTAMP) OVER (
-            PARTITION BY VENDOR_TIER_CODE ORDER BY ENTRY_TIMESTAMP
-        ) AS next_entry_ts
-    FROM changes
-),
-
 new_rows AS (
     SELECT
         ROW_NUMBER() OVER (
@@ -125,14 +99,8 @@ new_rows AS (
         oc.EXTENSION_FIELD_28,
         oc.EXTENSION_FIELD_29,
         oc.ENTRY_TIMESTAMP AS EFFECTIVE_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN oc.next_entry_ts - INTERVAL '1 second'
-            ELSE '9999-12-31 23:59:59'::TIMESTAMP_NTZ
-        END AS EXPIRATION_DATE,
-        CASE
-            WHEN oc.next_entry_ts IS NOT NULL THEN FALSE
-            ELSE TRUE
-        END AS IS_CURRENT_FLAG,
+        '9999-12-31 23:59:59'::TIMESTAMP_NTZ AS EXPIRATION_DATE,
+        TRUE AS IS_CURRENT_FLAG,
         oc.SOURCE_SYSTEM,
         oc.SOURCE_FILE_NAME,
         oc.BATCH_ID,
@@ -140,7 +108,7 @@ new_rows AS (
         oc.ETL_VERSION,
         CURRENT_TIMESTAMP AS INGESTION_DTTM,
         CURRENT_DATE AS INGESTION_DT
-    FROM ordered_changes oc
+    FROM changes oc
     CROSS JOIN max_key
     WHERE NOT EXISTS (
         SELECT 1
