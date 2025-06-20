@@ -108,9 +108,8 @@ WITH source_data AS (
     {% endif %}
     QUALIFY ROW_NUMBER() OVER (
         PARTITION BY W1STORE,W1WO,W1FMTP,W1WIPX
-        )
         ORDER BY TO_TIMESTAMP_NTZ(TRIM(ENTRY_TIMESTAMP)) DESC,W1CYMD desc,
-    W1HMS desc
+        W1HMS desc
     ) = 1
 ),
 
